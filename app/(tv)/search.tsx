@@ -172,12 +172,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     flexDirection: 'row',
-    backgroundColor: '#050505',
+    backgroundColor: '#070A12',
     padding: 16,
   },
   keyboardColumn: {
     width: 380,
-    backgroundColor: '#0E0E12',
+    backgroundColor: '#0E1322',
+    borderWidth: 1,
+    borderColor: '#1B2338',
     borderRadius: 10,
     padding: 16,
     marginRight: 16,
@@ -185,13 +187,13 @@ const styles = StyleSheet.create({
   inputBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#16161C',
+    backgroundColor: '#101628',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#222228',
+    borderColor: '#1B2338',
   },
   searchIcon: {
     marginRight: 8,
@@ -213,7 +215,7 @@ const styles = StyleSheet.create({
   keyButton: {
     flex: 1,
     aspectRatio: 1,
-    backgroundColor: '#1A1A22',
+    backgroundColor: '#151C30',
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 6,
@@ -227,7 +229,7 @@ const styles = StyleSheet.create({
   },
   keyFocused: {
     borderColor: colors.focusRing,
-    backgroundColor: 'rgba(255, 160, 0, 0.3)',
+    backgroundColor: 'rgba(0, 229, 255, 0.25)',
   },
   keyText: {
     color: '#D0D0D5',
@@ -239,7 +241,9 @@ const styles = StyleSheet.create({
   },
   resultsColumn: {
     flex: 1,
-    backgroundColor: '#0E0E12',
+    backgroundColor: '#0E1322',
+    borderWidth: 1,
+    borderColor: '#1B2338',
     borderRadius: 10,
     padding: 16,
   },

@@ -43,7 +43,7 @@ export const FocusableButton: React.FC<FocusableButtonProps> = ({
     // primary
     return isFocused
       ? [colors.primary, colors.secondary]
-      : ['#D64000', '#B52B00'];
+      : ['#007791', '#7B1FA2'];
   };
 
   return (

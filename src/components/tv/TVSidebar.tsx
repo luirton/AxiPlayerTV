@@ -8,6 +8,7 @@ import {
   Platform,
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme/colors';
 
@@ -36,7 +37,7 @@ export const TVSidebar: React.FC = () => {
   const handleSidebarFocus = () => {
     setIsExpanded(true);
     Animated.timing(widthAnim, {
-      toValue: 210,
+      toValue: 220,
       duration: 200,
       useNativeDriver: false,
     }).start();
@@ -61,13 +62,17 @@ export const TVSidebar: React.FC = () => {
     >
       {/* Brand Header */}
       <View style={styles.brandHeader}>
-        <View style={styles.brandIconContainer}>
-          <Text style={styles.brandLetter}>A</Text>
-        </View>
+        <Image
+          source={require('../../../assets/emblem_transparent.png')}
+          style={styles.brandEmblem}
+          contentFit="contain"
+        />
         {isExpanded && (
           <View style={styles.brandTextContainer}>
-            <Text style={styles.brandTitle}>AXI PLAYER</Text>
-            <Text style={styles.brandSubtitle}>TV EDITION</Text>
+            <Text style={styles.brandTitle}>
+              AXI<Text style={styles.brandTvText}>TV</Text>
+            </Text>
+            <Text style={styles.brandSubtitle}>EDITION</Text>
           </View>
         )}
       </View>
@@ -92,7 +97,7 @@ export const TVSidebar: React.FC = () => {
 
       {/* Footer Info */}
       <View style={styles.footer}>
-        <Ionicons name="wifi" size={16} color="#4CD964" />
+        <Ionicons name="wifi" size={16} color="#00E676" />
         {isExpanded && (
           <Text style={styles.footerText} numberOfLines={1}>
             Online • FHD
@@ -143,7 +148,7 @@ const SidebarItem: React.FC<SidebarItemProps> = ({
       <Ionicons
         name={item.icon}
         size={22}
-        color={isFocused ? colors.focusRing : isActive ? colors.primary : '#8E8E93'}
+        color={isFocused ? colors.focusRing : isActive ? colors.primary : '#9AA4BC'}
       />
       {isExpanded && (
         <Text
@@ -164,16 +169,16 @@ const SidebarItem: React.FC<SidebarItemProps> = ({
 const styles = StyleSheet.create({
   container: {
     height: '100%',
-    backgroundColor: '#0A0A0C',
+    backgroundColor: '#070A12',
     borderRightWidth: 1,
-    borderRightColor: '#1A1A1E',
+    borderRightColor: '#1B2338',
     paddingVertical: 16,
     paddingHorizontal: 8,
     alignItems: 'center',
     zIndex: 100,
   },
   expandedContainer: {
-    backgroundColor: 'rgba(10, 10, 12, 0.98)',
+    backgroundColor: 'rgba(7, 10, 18, 0.98)',
     elevation: 20,
     shadowColor: '#000',
     shadowOffset: { width: 4, height: 0 },
@@ -185,31 +190,25 @@ const styles = StyleSheet.create({
   brandHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
     width: '100%',
     paddingLeft: 4,
   },
-  brandIconContainer: {
+  brandEmblem: {
     width: 38,
     height: 38,
-    borderRadius: 8,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  brandLetter: {
-    color: '#FFFFFF',
-    fontWeight: '900',
-    fontSize: 20,
   },
   brandTextContainer: {
     marginLeft: 12,
   },
   brandTitle: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '900',
     letterSpacing: 1,
+  },
+  brandTvText: {
+    color: colors.primaryAmber,
   },
   brandSubtitle: {
     color: colors.primary,
@@ -233,15 +232,15 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   itemActive: {
-    backgroundColor: 'rgba(255, 106, 0, 0.12)',
+    backgroundColor: 'rgba(0, 229, 255, 0.12)',
   },
   itemFocused: {
     borderColor: colors.focusRing,
-    backgroundColor: 'rgba(255, 160, 0, 0.2)',
+    backgroundColor: 'rgba(0, 229, 255, 0.22)',
     transform: [{ scale: Platform.isTV ? 1.05 : 1.02 }],
   },
   itemLabel: {
-    color: '#8E8E93',
+    color: '#9AA4BC',
     fontSize: 14,
     fontWeight: '600',
     marginLeft: 14,
@@ -261,7 +260,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   footerText: {
-    color: '#4CD964',
+    color: '#00E676',
     fontSize: 11,
     fontWeight: 'bold',
     marginLeft: 10,

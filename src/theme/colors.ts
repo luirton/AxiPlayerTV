@@ -1,34 +1,40 @@
 export const colors = {
   // Backgrounds
-  background: '#050505',
-  surface: '#121212',
-  surfaceLight: '#1C1C1E',
-  surfaceHighlight: '#2A2A2E',
-  card: '#161618',
-  cardHover: '#242428',
+  background: '#070A12',
+  surface: '#0E1322',
+  surfaceLight: '#151C30',
+  surfaceHighlight: '#1E2845',
+  card: '#101628',
+  cardHover: '#182038',
 
-  // Accent Gradient (Axi Neon Fire)
-  primary: '#FF6A00',
-  primaryCrimson: '#E52D27',
-  primaryAmber: '#FFA000',
-  secondary: '#FF3B30',
+  // Accent Gradient (Axi Neon Cyan & Purple/Magenta)
+  primary: '#00E5FF',
+  primaryCrimson: '#D946EF',
+  primaryAmber: '#A855F7',
+  secondary: '#A855F7',
+
+  // Axi Neon Brand Palette
+  neonCyan: '#00E5FF',
+  neonPurple: '#A855F7',
+  neonMagenta: '#D946EF',
+  brandDarkBg: '#070A12',
 
   // Text
   text: '#FFFFFF',
-  textSecondary: '#A0A0A5',
-  textMuted: '#686870',
+  textSecondary: '#9AA4BC',
+  textMuted: '#5E6982',
 
   // UI Borders & Dividers
-  border: '#28282D',
-  borderHighlight: '#FF6A00',
+  border: '#1B2338',
+  borderHighlight: '#00E5FF',
 
   // Functional
-  success: '#34C759',
-  warning: '#FF9500',
-  error: '#FF453A',
-  info: '#0A84FF',
+  success: '#00E676',
+  warning: '#FFB300',
+  error: '#FF3B30',
+  info: '#00E5FF',
 
   // TV / Focus States
-  focusRing: '#FFA000',
-  focusBackground: '#2E2218',
+  focusRing: '#00E5FF',
+  focusBackground: '#0B2238',
 };

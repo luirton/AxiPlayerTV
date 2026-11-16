@@ -29,13 +29,27 @@ Diferente do app mobile, o **Axi Player TV** é construído desde a raiz para:
 | **Modo Android TV** | `android.software.leanback = true`, `android.hardware.touchscreen = false` |
 | **Launcher Android** | `android.intent.category.LEANBACK_LAUNCHER` + Banner 320x180 (16:9) |
 | **Tráfego de Rede** | HTTP/HTTPS Cleartext habilitado (`networkSecurityConfig`) para compatibilidade universal com provedores IPTV |
-| **Motor de Foco** | Sistema de foco D-pad com elevação de escala (scale 1.05x), borda viva em gradiente âmbar/laranja (`#FFA000` / `#FF6A00`) e glow suave |
+| **Motor de Foco** | Sistema de foco D-pad com elevação de escala (scale 1.05x), borda viva em gradiente Neon Cyan e Purple (`#00E5FF` / `#A855F7`) e glow suave |
+| **Identidade Visual** | **Axi Neon Cyan & Purple/Magenta** (`#00E5FF`, `#A855F7`, `#D946EF`, fundo `#070A12`) |
 | **Engine de Vídeo** | `expo-video` (ExoPlayer nativo no Android) otimizado para reprodução contínua e zapping instantâneo |
 | **Backend & Dados** | Conexão direta com APIs Xtream Codes e listas M3U/M3U8 com persistência local via AsyncStorage |
 
 ---
 
 ## 4. Design e Telas (Baseado nas Fotos Oficiais)
+
+### 4.0 Nova Tela de Login Panorâmica Split-Screen (2 Colunas 16:9)
+* **Coluna Esquerda:**
+  * Emblema 3D translúcido com animação de pulso neon (`emblem_transparent.png`).
+  * Título oficial: **AxiPlayer TV** (Android TV & Google TV Edition).
+  * Card com guia de navegação por controle remoto (D-Pad + tecla OK).
+  * Autoria oficial: **Created by Luirton Gurgel** com link para o GitHub.
+* **Coluna Direita:**
+  * Seletor de abas amigável para controle remoto:
+    1. **Link da Lista (M3U / HLS / Curto):** Parser em tempo real que extrai credenciais de URLs de IPTV completas ou links curtos com detecção visual imediata e fallback inteligente (correção de porta `:80` e download M3U).
+    2. **Servidor / Usuário:** Conexão manual via Xtream Codes API.
+  * **Seção de Listas Conectadas Anteriormente (Multi-Contas):**
+    * Cards focáveis para reconexão rápida em 1 clique e botão de exclusão da lista.
 
 ### 4.1 Menu Lateral Retrátil (Sidebar Retrátil)
 * **Estado Recolhido:** Faixa vertical estreita à esquerda exibindo apenas ícones elegantes:
@@ -139,3 +153,7 @@ axi-player-tv/
 - [x] Implementação da tela de TV Ao Vivo com player contínuo e OSD translúcido (`TVLiveOSD` + zapping)
 - [x] Implementação dos catálogos de Filmes e Séries em modo Paisagem (Backdrop dinâmico, temporadas e episódios)
 - [x] Configuração de push duplo para GitHub e GitLab
+- [x] Migração para nova identidade visual Neon Cyan & Purple/Magenta e novos assets de alta definição
+- [x] Nova Splash Screen dinâmica 16:9 com animação de emblema e status de carregamento
+- [x] Nova tela de Login split-screen (2 colunas) com Smart Link (M3U/HLS/Curto), dados Xtream e Multi-contas
+- [x] Dashboard TV integrado com Canais Favoritos, Continuar Assistindo, Assistir Depois e Marcas de Streaming
