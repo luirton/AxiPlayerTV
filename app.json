@@ -7,11 +7,6 @@
     "orientation": "landscape",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "androidNavigationBar": {
-      "visible": "immersive",
-      "barStyle": "light-content",
-      "backgroundColor": "#000000"
-    },
     "android": {
       "package": "com.axiplayertv.app",
       "adaptiveIcon": {
@@ -28,7 +23,6 @@
         "WAKE_LOCK",
         "FOREGROUND_SERVICE"
       ],
-      "usesCleartextTraffic": true,
       "predictiveBackGestureEnabled": false
     },
     "plugins": [
