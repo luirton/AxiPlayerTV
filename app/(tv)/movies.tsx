@@ -90,20 +90,20 @@ export default function TVMoviesScreen() {
         {focusedMovie?.stream_icon ? (
           <Image
             source={{ uri: focusedMovie.stream_icon }}
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
             contentFit="cover"
           />
         ) : null}
 
         <LinearGradient
           colors={['transparent', 'rgba(5, 5, 5, 0.85)', '#050505']}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
         />
         <LinearGradient
           colors={['rgba(5, 5, 5, 0.95)', 'rgba(5, 5, 5, 0.5)', 'transparent']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
         />
 
         <View style={styles.previewContent}>

@@ -130,12 +130,12 @@ axi-player-tv/
 
 - [x] Repositório oficial GitHub configurado: `luirton/AxiPlayerTV`
 - [x] Arquivo de documentação arquitetural criado (`PROJECT_TV.md`)
-- [ ] Criação do projeto base `axi-player-tv`
-- [ ] Configuração do `app.json` com `isTV: true`, `orientation: "landscape"` e plugin Leanback
-- [ ] Implementação do Plugin Expo para Leanback Launcher e Cleartext Traffic
-- [ ] Migração e adaptação dos serviços de conexão Xtream Codes e M3U
-- [ ] Desenvolvimento dos componentes focáveis de controle remoto (`FocusableCard`, `FocusableButton`)
-- [ ] Implementação da Sidebar Retrátil com navegação D-Pad
-- [ ] Implementação da tela de TV Ao Vivo com player contínuo e OSD translúcido
+- [x] Criação do projeto base `axi-player-tv`
+- [x] Configuração do `app.json` com `isTV: true`, `orientation: "landscape"` e plugin Leanback
+- [x] Implementação do Plugin Expo para Leanback Launcher e Cleartext Traffic
+- [x] Migração e adaptação dos serviços de conexão Xtream Codes e M3U
+- [x] Desenvolvimento dos componentes focáveis de controle remoto (`FocusableCard`, `FocusableButton`)
+- [x] Implementação da Sidebar Retrátil com navegação D-Pad
+- [x] Implementação da tela de TV Ao Vivo com player contínuo e OSD translúcido (`TVLiveOSD` + zapping)
 - [ ] Implementação dos catálogos de Filmes e Séries em modo Paisagem
-- [ ] Configuração de push duplo para GitHub e GitLab
+- [x] Configuração de push duplo para GitHub e GitLab

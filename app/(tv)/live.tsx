@@ -1,272 +1,426 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
-  FlatList,
-  Pressable,
   StyleSheet,
+  Pressable,
   ActivityIndicator,
-  Platform,
+  BackHandler,
+  Modal,
 } from 'react-native';
-import { Image } from 'expo-image';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { xtreamClient } from '../../src/services/xtreamClient';
 import { storage } from '../../src/services/storage';
 import { colors } from '../../src/theme/colors';
-import { Category, LiveStream } from '../../src/types/iptv';
-import { useRouter } from 'expo-router';
+import { IptvCategory, LiveChannel, EpgProgram } from '../../src/types/iptv';
+import { TVLiveOSD } from '../../src/components/tv/TVLiveOSD';
 
 export default function TVLiveScreen() {
   const router = useRouter();
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
-  const [channels, setChannels] = useState<LiveStream[]>([]);
-  const [activeChannel, setActiveChannel] = useState<LiveStream | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
 
+  // Categories & Channels State
+  const [categories, setCategories] = useState<IptvCategory[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<IptvCategory | null>(null);
+  const [channels, setChannels] = useState<LiveChannel[]>([]);
+  const [activeChannel, setActiveChannel] = useState<LiveChannel | null>(null);
+  const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
+  const [favoriteChannels, setFavoriteChannels] = useState<LiveChannel[]>([]);
+
+  // Stream & Video Player State
+  const [streamUrl, setStreamUrl] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isPlayerBuffering, setIsPlayerBuffering] = useState(false);
+
+  // OSD & Remote Navigation State
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isZappingBannerOpen, setIsZappingBannerOpen] = useState(false);
+  const [currentEpg, setCurrentEpg] = useState<EpgProgram | null>(null);
+  const [showExitDialog, setShowExitDialog] = useState(false);
+
+  const zappingTimerRef = useRef<any>(null);
+
+  // Initialize expo-video player
+  const player = useVideoPlayer(streamUrl, (p) => {
+    p.loop = false;
+    p.play();
+  });
+
+  // Load Categories, Favorites and Last Watched Channel on mount
   useEffect(() => {
-    loadLiveCategories();
+    initLiveTv();
   }, []);
 
-  const loadLiveCategories = async () => {
+  const initLiveTv = async () => {
     try {
       setIsLoading(true);
-      const profile = await storage.getActiveProfile();
-      if (!profile) return;
+      const profile = await storage.getActiveAccount();
+      if (!profile) {
+        setIsLoading(false);
+        return;
+      }
+
       xtreamClient.setCredentials(profile.serverUrl, profile.username, profile.password);
 
-      const cats = await xtreamClient.getLiveCategories();
-      setCategories(cats);
+      // Load favorites from storage
+      const [favIds, favChans] = await Promise.all([
+        storage.getFavorites(),
+        storage.getFavoriteChannels(),
+      ]);
+      setFavoriteIds(favIds);
+      setFavoriteChannels(favChans);
 
-      if (cats.length > 0) {
-        setSelectedCategory(cats[0]);
-        loadChannels(cats[0].category_id);
+      // Fetch live categories from Xtream API
+      const cats = await xtreamClient.getLiveCategories();
+      const allCategories: IptvCategory[] = [];
+
+      // Add "Favoritos" category if there are saved favorites
+      if (favIds.length > 0) {
+        allCategories.push({
+          category_id: 'favorites',
+          category_name: '⭐ Favoritos',
+        });
+      }
+      allCategories.push(...cats);
+      setCategories(allCategories);
+
+      // Restore last watched channel or fallback to first channel
+      const lastChannel = await storage.getLastLiveChannel();
+      let initialCategory = allCategories[0] || null;
+
+      if (lastChannel && lastChannel.category_id) {
+        const matchingCat = allCategories.find((c) => c.category_id === lastChannel.category_id);
+        if (matchingCat) initialCategory = matchingCat;
+      }
+
+      setSelectedCategory(initialCategory);
+
+      if (initialCategory) {
+        await loadCategoryChannels(initialCategory.category_id, lastChannel || undefined);
       }
     } catch (err) {
-      console.error('Error loading live categories:', err);
+      console.error('Failed to initialize Live TV:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const loadChannels = async (categoryId: string) => {
+  // Load Channels for a Category
+  const loadCategoryChannels = async (categoryId: string, preferredChannel?: LiveChannel) => {
     try {
-      const liveList = await xtreamClient.getLiveStreams(categoryId);
-      setChannels(liveList);
-      if (liveList.length > 0 && !activeChannel) {
-        setActiveChannel(liveList[0]);
+      let list: LiveChannel[] = [];
+
+      if (categoryId === 'favorites') {
+        list = await storage.getFavoriteChannels();
+      } else {
+        list = await xtreamClient.getLiveStreams(categoryId);
+      }
+
+      setChannels(list);
+
+      const targetChannel =
+        preferredChannel && list.some((c) => c.stream_id === preferredChannel.stream_id)
+          ? preferredChannel
+          : list[0] || null;
+
+      if (targetChannel) {
+        tuneChannel(targetChannel);
       }
     } catch (err) {
-      console.error('Error loading channels:', err);
+      console.error('Failed to load category channels:', err);
     }
   };
 
-  const handleCategorySelect = (cat: Category) => {
-    setSelectedCategory(cat);
-    loadChannels(cat.category_id);
+  // Tune into a Channel (Instant Video Stream Switch)
+  const tuneChannel = useCallback(
+    async (channel: LiveChannel) => {
+      setActiveChannel(channel);
+
+      // Generate video stream URL
+      const url = xtreamClient.getLiveStreamUrl(channel.stream_id, 'm3u8');
+      setStreamUrl(url);
+
+      if (player) {
+        try {
+          player.replace(url);
+          player.play();
+        } catch (e) {
+          console.warn('Error replacing player stream:', e);
+        }
+      }
+
+      // Persist as last watched
+      storage.saveLastLiveChannel(channel);
+
+      // Show Zapping Banner and auto-hide
+      triggerZappingBanner();
+
+      // Fetch EPG in background
+      try {
+        const epgList = await xtreamClient.getShortEpg(channel.stream_id);
+        if (epgList && epgList.length > 0) {
+          setCurrentEpg(epgList[0]);
+        } else {
+          setCurrentEpg(null);
+        }
+      } catch {
+        setCurrentEpg(null);
+      }
+    },
+    [player]
+  );
+
+  // Trigger Zapping Banner with 4.5s auto-hide timer
+  const triggerZappingBanner = () => {
+    setIsZappingBannerOpen(true);
+    if (zappingTimerRef.current) {
+      clearTimeout(zappingTimerRef.current);
+    }
+    zappingTimerRef.current = setTimeout(() => {
+      setIsZappingBannerOpen(false);
+    }, 4500);
   };
 
-  const handlePlayChannel = (channel: LiveStream) => {
-    setActiveChannel(channel);
-    router.push({
-      pathname: '/player/[id]',
-      params: { id: String(channel.stream_id), type: 'live', name: channel.name },
-    });
+  // Handle D-Pad Zapping (Next / Previous Channel)
+  const handleZapping = (direction: 'next' | 'prev') => {
+    if (!channels || channels.length === 0 || !activeChannel) return;
+
+    const currentIndex = channels.findIndex((c) => c.stream_id === activeChannel.stream_id);
+    let targetIndex = 0;
+
+    if (direction === 'next') {
+      targetIndex = currentIndex >= channels.length - 1 ? 0 : currentIndex + 1;
+    } else {
+      targetIndex = currentIndex <= 0 ? channels.length - 1 : currentIndex - 1;
+    }
+
+    const nextChan = channels[targetIndex];
+    if (nextChan) {
+      tuneChannel(nextChan);
+    }
+  };
+
+  // Toggle Favorite Status
+  const handleToggleFavorite = async (channel: LiveChannel) => {
+    const isNowFav = await storage.toggleFavoriteChannel(channel);
+    const updatedFavIds = await storage.getFavorites();
+    setFavoriteIds(updatedFavIds);
+
+    const updatedFavList = await storage.getFavoriteChannels();
+    setFavoriteChannels(updatedFavList);
+
+    // If currently viewing favorites and channel was removed, update list
+    if (selectedCategory?.category_id === 'favorites') {
+      setChannels(updatedFavList);
+      if (activeChannel?.stream_id === channel.stream_id && updatedFavList.length > 0) {
+        tuneChannel(updatedFavList[0]);
+      }
+    }
+  };
+
+  // Back Button Handling (Remote Control)
+  useEffect(() => {
+    const onBackPress = () => {
+      if (showExitDialog) {
+        setShowExitDialog(false);
+        return true;
+      }
+      if (isDrawerOpen) {
+        setIsDrawerOpen(false);
+        return true;
+      }
+      if (isZappingBannerOpen) {
+        setIsZappingBannerOpen(false);
+        return true;
+      }
+
+      // In clean fullscreen: show exit prompt
+      setShowExitDialog(true);
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => backHandler.remove();
+  }, [isDrawerOpen, isZappingBannerOpen, showExitDialog]);
+
+  // Handle Category Select
+  const handleCategorySelect = (cat: IptvCategory) => {
+    setSelectedCategory(cat);
+    loadCategoryChannels(cat.category_id);
+  };
+
+  // Handle Channel Select from Drawer
+  const handleChannelSelect = (channel: LiveChannel) => {
+    tuneChannel(channel);
+    // Keep video playing and briefly display zapping bar
   };
 
   if (isLoading) {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Carregando Guia de TV ao Vivo...</Text>
+        <Text style={styles.loadingText}>Conectando ao Guia de TV ao Vivo...</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Coluna 1: Categorias de TV */}
-      <View style={styles.categoryColumn}>
-        <View style={styles.columnHeader}>
-          <Ionicons name="list" size={18} color={colors.primary} />
-          <Text style={styles.columnTitle}>CATEGORIAS</Text>
-        </View>
-
-        <FlatList
-          data={categories}
-          keyExtractor={(item) => item.category_id}
-          showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => {
-            const isSelected = selectedCategory?.category_id === item.category_id;
-            return (
-              <CategoryItem
-                title={item.category_name}
-                isSelected={isSelected}
-                onPress={() => handleCategorySelect(item)}
-              />
-            );
-          }}
-        />
-      </View>
-
-      {/* Coluna 2: Canais da Categoria Selecionada */}
-      <View style={styles.channelColumn}>
-        <View style={styles.columnHeader}>
-          <Ionicons name="tv-outline" size={18} color={colors.primary} />
-          <Text style={styles.columnTitle}>
-            {selectedCategory?.category_name.toUpperCase() || 'CANAIS'} ({channels.length})
-          </Text>
-        </View>
-
-        <FlatList
-          data={channels}
-          keyExtractor={(item) => String(item.stream_id)}
-          showsVerticalScrollIndicator={false}
-          renderItem={({ item, index }) => {
-            const isActive = activeChannel?.stream_id === item.stream_id;
-            return (
-              <ChannelItem
-                num={index + 1}
-                name={item.name}
-                logo={item.stream_icon}
-                isActive={isActive}
-                onPress={() => handlePlayChannel(item)}
-              />
-            );
-          }}
-        />
-      </View>
-
-      {/* Lado Direito: Preview do Canal Selecionado e Detalhes EPG */}
-      <View style={styles.previewColumn}>
-        {activeChannel ? (
-          <View style={styles.previewCard}>
-            <View style={styles.previewVideoPlaceholder}>
-              {activeChannel.stream_icon ? (
-                <Image
-                  source={{ uri: activeChannel.stream_icon }}
-                  style={styles.previewLogo}
-                  contentFit="contain"
-                />
-              ) : (
-                <Ionicons name="play-circle-outline" size={64} color="#555" />
-              )}
-              <Pressable
-                style={styles.openFullButton}
-                onPress={() => handlePlayChannel(activeChannel)}
-              >
-                <Ionicons name="expand" size={16} color="#FFF" />
-                <Text style={styles.openFullText}>Assistir em Tela Cheia</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.previewInfo}>
-              <Text style={styles.previewChannelName} numberOfLines={2}>
-                {activeChannel.name}
-              </Text>
-              <View style={styles.badgeRow}>
-                <View style={styles.badgeLive}>
-                  <Text style={styles.badgeLiveText}>AO VIVO</Text>
-                </View>
-                <Text style={styles.epgTime}>Agora</Text>
-              </View>
-              <Text style={styles.epgTitle}>Programação ao vivo em tempo real</Text>
-              <Text style={styles.epgDesc}>
-                Aperte OK no controle para abrir em tela cheia com troca rápida de canais (Zapping Cima/Baixo).
-              </Text>
-            </View>
-          </View>
+      {/* 1. Camada de Vídeo Contínuo em Tela Cheia (16:9 Landscape) */}
+      <View style={StyleSheet.absoluteFill}>
+        {streamUrl ? (
+          <VideoView
+            player={player}
+            style={StyleSheet.absoluteFill}
+            contentFit="contain"
+            nativeControls={false}
+          />
         ) : (
-          <View style={styles.centerPreview}>
-            <Text style={styles.selectChannelText}>Selecione um canal para assistir</Text>
+          <View style={styles.blackBackground}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>Sintonizando canal...</Text>
           </View>
         )}
       </View>
+
+      {/* 2. Área de Toque/Foco Invisível para Interação Remota no Vídeo */}
+      {!isDrawerOpen && !showExitDialog && (
+        <Pressable
+          focusable={true}
+          style={StyleSheet.absoluteFill}
+          onPress={() => {
+            if (isZappingBannerOpen) {
+              setIsDrawerOpen(true);
+              setIsZappingBannerOpen(false);
+            } else {
+              triggerZappingBanner();
+            }
+          }}
+        >
+          {/* Quick D-Pad Touch/Click Hotspots for testing */}
+          <View style={styles.hotspotBar}>
+            <HotspotAction icon="chevron-up" onPress={() => handleZapping('prev')} />
+            <HotspotAction icon="list" onPress={() => setIsDrawerOpen(true)} />
+            <HotspotAction icon="chevron-down" onPress={() => handleZapping('next')} />
+          </View>
+        </Pressable>
+      )}
+
+      {/* 3. On-Screen Display (OSD) Multicamadas: Gaveta Translúcida & Zapping */}
+      <TVLiveOSD
+        isDrawerOpen={isDrawerOpen}
+        onCloseDrawer={() => setIsDrawerOpen(false)}
+        categories={categories}
+        selectedCategory={selectedCategory}
+        onSelectCategory={handleCategorySelect}
+        channels={channels}
+        activeChannel={activeChannel}
+        onSelectChannel={handleChannelSelect}
+        favoriteIds={favoriteIds}
+        onToggleFavorite={handleToggleFavorite}
+        isZappingBannerOpen={isZappingBannerOpen}
+        currentEpg={currentEpg}
+        onExitToHome={() => router.replace('/(tv)/home')}
+        onPreviousChannel={() => handleZapping('prev')}
+        onNextChannel={() => handleZapping('next')}
+        onOpenDrawer={() => {
+          setIsZappingBannerOpen(false);
+          setIsDrawerOpen(true);
+        }}
+      />
+
+      {/* 4. Modal de Confirmação de Saída para o Menu Principal */}
+      <Modal
+        visible={showExitDialog}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowExitDialog(false)}
+      >
+        <View style={styles.exitModalBackdrop}>
+          <View style={styles.exitModalCard}>
+            <View style={styles.exitModalIconContainer}>
+              <Ionicons name="tv-outline" size={36} color={colors.primary} />
+            </View>
+            <Text style={styles.exitModalTitle}>Deseja sair da TV ao Vivo?</Text>
+            <Text style={styles.exitModalSubtitle}>
+              O canal atual continuará pronto para retomar a qualquer momento.
+            </Text>
+
+            <View style={styles.exitModalActions}>
+              <ModalActionButton
+                label="Continuar Assistindo"
+                isPrimary={false}
+                hasPreferredFocus={true}
+                onPress={() => setShowExitDialog(false)}
+              />
+              <ModalActionButton
+                label="Sair para o Menu"
+                isPrimary={true}
+                onPress={() => {
+                  setShowExitDialog(false);
+                  router.replace('/(tv)/home');
+                }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
-function CategoryItem({
-  title,
-  isSelected,
+function HotspotAction({
+  icon,
   onPress,
 }: {
-  title: string;
-  isSelected: boolean;
+  icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
 }) {
   const [isFocused, setIsFocused] = useState(false);
-
   return (
     <Pressable
       focusable={true}
       onFocus={() => setIsFocused(true)}
       onBlur={() => setIsFocused(false)}
       onPress={onPress}
-      style={[
-        styles.catItem,
-        isSelected && styles.catItemSelected,
-        isFocused && styles.itemFocused,
-      ]}
+      style={[styles.hotspotBtn, isFocused && styles.focusedBtn]}
     >
-      <Text
-        style={[
-          styles.catItemText,
-          isSelected && styles.catItemTextSelected,
-          isFocused && styles.itemTextFocused,
-        ]}
-        numberOfLines={1}
-      >
-        {title}
-      </Text>
+      <Ionicons name={icon} size={16} color="#AAA" />
     </Pressable>
   );
 }
 
-function ChannelItem({
-  num,
-  name,
-  logo,
-  isActive,
+function ModalActionButton({
+  label,
+  isPrimary,
+  hasPreferredFocus,
   onPress,
 }: {
-  num: number;
-  name: string;
-  logo?: string;
-  isActive: boolean;
+  label: string;
+  isPrimary: boolean;
+  hasPreferredFocus?: boolean;
   onPress: () => void;
 }) {
   const [isFocused, setIsFocused] = useState(false);
-
   return (
     <Pressable
       focusable={true}
+      hasTVPreferredFocus={hasPreferredFocus}
       onFocus={() => setIsFocused(true)}
       onBlur={() => setIsFocused(false)}
       onPress={onPress}
       style={[
-        styles.chanItem,
-        isActive && styles.chanItemActive,
-        isFocused && styles.itemFocused,
+        isPrimary ? styles.exitModalBtnPrimary : styles.exitModalBtnSecondary,
+        isFocused && styles.exitBtnFocused,
       ]}
     >
-      <Text style={styles.chanNum}>{String(num).padStart(3, '0')}</Text>
-      {logo ? (
-        <Image source={{ uri: logo }} style={styles.chanLogo} contentFit="contain" />
-      ) : (
-        <View style={styles.chanLogoPlaceholder}>
-          <Ionicons name="tv" size={14} color="#8E8E93" />
-        </View>
-      )}
       <Text
-        style={[
-          styles.chanName,
-          isActive && styles.chanNameActive,
-          isFocused && styles.itemTextFocused,
-        ]}
-        numberOfLines={1}
+        style={
+          isPrimary ? styles.exitModalBtnPrimaryText : styles.exitModalBtnSecondaryText
+        }
       >
-        {name}
+        {label}
       </Text>
     </Pressable>
   );
@@ -275,9 +429,7 @@ function ChannelItem({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    flexDirection: 'row',
-    backgroundColor: '#050505',
-    padding: 16,
+    backgroundColor: '#000000',
   },
   centerContainer: {
     flex: 1,
@@ -287,196 +439,110 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     color: '#8E8E93',
-    marginTop: 16,
+    marginTop: 14,
     fontSize: 14,
-  },
-  categoryColumn: {
-    width: 220,
-    backgroundColor: '#0E0E12',
-    borderRadius: 10,
-    padding: 10,
-    marginRight: 12,
-  },
-  channelColumn: {
-    width: 280,
-    backgroundColor: '#0E0E12',
-    borderRadius: 10,
-    padding: 10,
-    marginRight: 12,
-  },
-  previewColumn: {
-    flex: 1,
-    backgroundColor: '#0E0E12',
-    borderRadius: 10,
-    padding: 16,
-  },
-  columnHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingBottom: 10,
-    marginBottom: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E1E24',
-  },
-  columnTitle: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '900',
-    marginLeft: 8,
-    letterSpacing: 0.5,
-  },
-  catItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    marginVertical: 2,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  catItemSelected: {
-    backgroundColor: 'rgba(255, 106, 0, 0.15)',
-  },
-  catItemText: {
-    color: '#A0A0A5',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  catItemTextSelected: {
-    color: colors.primary,
-    fontWeight: 'bold',
-  },
-  chanItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    marginVertical: 2,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  chanItemActive: {
-    backgroundColor: 'rgba(255, 160, 0, 0.18)',
-  },
-  chanNum: {
-    color: '#66666B',
-    fontSize: 11,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    marginRight: 8,
-  },
-  chanLogo: {
-    width: 32,
-    height: 24,
-    borderRadius: 4,
-    marginRight: 10,
-  },
-  chanLogoPlaceholder: {
-    width: 32,
-    height: 24,
-    backgroundColor: '#1C1C22',
-    borderRadius: 4,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  chanName: {
-    color: '#D0D0D5',
-    fontSize: 13,
     fontWeight: '500',
+  },
+  blackBackground: {
     flex: 1,
-  },
-  chanNameActive: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-  },
-  itemFocused: {
-    borderColor: colors.focusRing,
-    backgroundColor: 'rgba(255, 160, 0, 0.25)',
-  },
-  itemTextFocused: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-  },
-  previewCard: {
-    flex: 1,
-  },
-  previewVideoPlaceholder: {
-    height: 240,
-    backgroundColor: '#16161C',
-    borderRadius: 10,
+    backgroundColor: '#000000',
     justifyContent: 'center',
     alignItems: 'center',
-    overflow: 'hidden',
-    position: 'relative',
   },
-  previewLogo: {
-    width: 120,
-    height: 80,
-  },
-  openFullButton: {
+  hotspotBar: {
     position: 'absolute',
-    bottom: 12,
-    right: 12,
-    backgroundColor: colors.primary,
+    top: 20,
+    right: 20,
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: 8,
+    opacity: 0.35,
+  },
+  hotspotBtn: {
+    backgroundColor: 'rgba(20, 20, 25, 0.7)',
+    padding: 8,
     borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#333',
   },
-  openFullText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginLeft: 6,
+  focusedBtn: {
+    borderColor: colors.focusRing,
+    backgroundColor: colors.focusRing,
   },
-  previewInfo: {
-    marginTop: 16,
-  },
-  previewChannelName: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 8,
-  },
-  badgeLive: {
-    backgroundColor: '#E52D27',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginRight: 8,
-  },
-  badgeLiveText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  epgTime: {
-    color: '#8E8E93',
-    fontSize: 12,
-  },
-  epgTitle: {
-    color: '#E0E0E5',
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  epgDesc: {
-    color: '#8E8E93',
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  centerPreview: {
+
+  // Exit Modal
+  exitModalBackdrop: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.82)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  selectChannelText: {
-    color: '#666',
-    fontSize: 14,
+  exitModalCard: {
+    width: 440,
+    backgroundColor: '#121218',
+    borderRadius: 14,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#262630',
+  },
+  exitModalIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255, 106, 0, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  exitModalTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  exitModalSubtitle: {
+    color: '#8E8E93',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 20,
+  },
+  exitModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  exitModalBtnSecondary: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#1F1F28',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  exitModalBtnSecondaryText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  exitModalBtnPrimary: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  exitModalBtnPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  exitBtnFocused: {
+    borderColor: colors.focusRing,
+    transform: [{ scale: 1.04 }],
   },
 });

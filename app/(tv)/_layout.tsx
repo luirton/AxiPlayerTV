@@ -1,12 +1,15 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Slot } from 'expo-router';
+import { Slot, usePathname } from 'expo-router';
 import { TVSidebar } from '../../src/components/tv/TVSidebar';
 
 export default function TVLayout() {
+  const pathname = usePathname();
+  const isLive = pathname?.includes('/live');
+
   return (
     <View style={styles.container}>
-      <TVSidebar />
+      {!isLive && <TVSidebar />}
       <View style={styles.mainContent}>
         <Slot />
       </View>

@@ -24,6 +24,23 @@ export class XtreamClient {
     return this.serverUrl;
   }
 
+  public setCredentials(serverUrl: string, username: string, password?: string): void {
+    this.serverUrl = this.normalizeUrl(serverUrl);
+    this.username = username.trim();
+    this.password = password?.trim();
+  }
+
+  public getStreamUrl(streamId: string | number, type: 'live' | 'movie' | 'series', containerExtension: string = 'mp4'): string {
+    const id = Number(streamId);
+    if (type === 'live') {
+      return this.getLiveStreamUrl(id, 'm3u8');
+    }
+    if (type === 'movie') {
+      return this.getMovieStreamUrl(id, containerExtension);
+    }
+    return this.getEpisodeStreamUrl(streamId, containerExtension);
+  }
+
   private normalizeUrl(url: string): string {
     let clean = url.trim();
 
@@ -213,3 +230,5 @@ export class XtreamClient {
     return `${this.serverUrl}/series/${encodeURIComponent(this.username)}/${encodeURIComponent(this.password || '')}/${episodeId}.${ext}`;
   }
 }
+
+export const xtreamClient = new XtreamClient('', '', '');

@@ -28,7 +28,7 @@ export default function TVPlayerScreen() {
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [showControls, setShowControls] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
-  const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hideTimerRef = useRef<any>(null);
 
   // Initialize stream URL
   useEffect(() => {
@@ -108,7 +108,7 @@ export default function TVPlayerScreen() {
       {streamUrl ? (
         <VideoView
           player={player}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           contentFit="contain"
           nativeControls={false}
         />
@@ -121,7 +121,7 @@ export default function TVPlayerScreen() {
 
       {/* On-Screen Display (OSD) Overlay */}
       {showControls && (
-        <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
           {/* Top Bar OSD */}
           <LinearGradient
             colors={['rgba(0,0,0,0.85)', 'transparent']}

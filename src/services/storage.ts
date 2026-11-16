@@ -15,6 +15,7 @@ const KEYS = {
   WATCH_LATER: '@axi_watch_later',
   PARENTAL_PIN: '@axi_parental_pin',
   SETTINGS: '@axi_settings',
+  LAST_LIVE_CHANNEL: '@axi_last_live_channel',
 };
 
 export interface MediaListItem {
@@ -130,6 +131,23 @@ export const storage = {
       const fixed = fixAccountProtocol(account);
       await AsyncStorage.setItem(KEYS.ACTIVE_ACCOUNT, JSON.stringify(fixed));
     }
+  },
+
+  // Aliases for Profile compatibility
+  async getActiveProfile(): Promise<SavedAccount | null> {
+    return this.getActiveAccount();
+  },
+
+  async setActiveProfile(account: SavedAccount | null): Promise<void> {
+    return this.setActiveAccount(account);
+  },
+
+  async saveProfile(account: SavedAccount): Promise<void> {
+    return this.saveAccount(account);
+  },
+
+  async clearActiveProfile(): Promise<void> {
+    return this.setActiveAccount(null);
   },
 
   // Favorites (Canais de TV)
@@ -481,5 +499,23 @@ export const storage = {
     const updated = { ...current, ...settings };
     await AsyncStorage.setItem(KEYS.SETTINGS, JSON.stringify(updated));
     return updated;
+  },
+
+  // Last Watched Live Channel
+  async saveLastLiveChannel(channel: LiveChannel): Promise<void> {
+    try {
+      await AsyncStorage.setItem(KEYS.LAST_LIVE_CHANNEL, JSON.stringify(channel));
+    } catch (e) {
+      console.warn('Failed to save last live channel:', e);
+    }
+  },
+
+  async getLastLiveChannel(): Promise<LiveChannel | null> {
+    try {
+      const json = await AsyncStorage.getItem(KEYS.LAST_LIVE_CHANNEL);
+      return json ? JSON.parse(json) : null;
+    } catch {
+      return null;
+    }
   },
 };

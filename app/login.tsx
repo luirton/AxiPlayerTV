@@ -34,22 +34,21 @@ export default function LoginScreen() {
     setIsLoading(true);
     try {
       const cleanUrl = serverUrl.trim().replace(/\/$/, '');
-      const authData = await xtreamClient.authenticate(cleanUrl, username.trim(), password.trim());
+      xtreamClient.setCredentials(cleanUrl, username.trim(), password.trim());
+      const authData = await xtreamClient.authenticate();
 
       const newProfile = {
-        id: `profile_${Date.now()}`,
+        id: `${username.trim()}@${cleanUrl}`,
         name: profileName.trim() || 'Meu Servidor',
         serverUrl: cleanUrl,
         username: username.trim(),
         password: password.trim(),
-        type: 'xtream' as const,
         createdAt: Date.now(),
-        userInfo: authData.user_info,
-        serverInfo: authData.server_info,
+        lastLogin: Date.now(),
       };
 
       await storage.saveProfile(newProfile);
-      await storage.setActiveProfile(newProfile.id);
+      await storage.setActiveProfile(newProfile);
 
       router.replace('/(tv)/home');
     } catch (err: any) {
@@ -63,7 +62,7 @@ export default function LoginScreen() {
     <View style={styles.container}>
       <LinearGradient
         colors={['rgba(255, 106, 0, 0.08)', 'transparent', '#050505']}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
 
       <View style={styles.contentRow}>

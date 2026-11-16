@@ -34,6 +34,11 @@ export interface IptvCategory {
   parent_id?: number;
 }
 
+export type Category = IptvCategory;
+export type LiveStream = LiveChannel;
+export type VodStream = VodMovie;
+export type SeriesStream = SeriesItem;
+
 export interface LiveChannel {
   num?: number;
   name: string;

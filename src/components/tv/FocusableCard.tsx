@@ -69,12 +69,12 @@ export const FocusableCard: React.FC<FocusableCardProps> = ({
       {imageUrl ? (
         <Image
           source={{ uri: imageUrl }}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           contentFit="cover"
           transition={200}
         />
       ) : (
-        <View style={[StyleSheet.absoluteFillObject, styles.placeholder]}>
+        <View style={[StyleSheet.absoluteFill, styles.placeholder]}>
           <Text style={styles.placeholderText} numberOfLines={2}>
             {title}
           </Text>

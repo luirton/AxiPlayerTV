@@ -56,13 +56,13 @@ export default function TVSearchScreen() {
       ]);
 
       const lower = searchTerm.toLowerCase();
-      const filteredLive = liveList
-        .filter((item) => item.name.toLowerCase().includes(lower))
-        .map((item) => ({ ...item, type: 'live' }));
+      const filteredLive = (liveList as any[])
+        .filter((item: any) => item.name?.toLowerCase().includes(lower))
+        .map((item: any) => ({ ...item, type: 'live' }));
 
-      const filteredVod = vodList
-        .filter((item) => item.name.toLowerCase().includes(lower))
-        .map((item) => ({ ...item, type: 'movie' }));
+      const filteredVod = (vodList as any[])
+        .filter((item: any) => item.name?.toLowerCase().includes(lower))
+        .map((item: any) => ({ ...item, type: 'movie' }));
 
       setResults([...filteredLive, ...filteredVod]);
     } catch (err) {
