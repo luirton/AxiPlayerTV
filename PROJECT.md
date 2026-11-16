@@ -137,5 +137,5 @@ axi-player-tv/
 - [x] Desenvolvimento dos componentes focáveis de controle remoto (`FocusableCard`, `FocusableButton`)
 - [x] Implementação da Sidebar Retrátil com navegação D-Pad
 - [x] Implementação da tela de TV Ao Vivo com player contínuo e OSD translúcido (`TVLiveOSD` + zapping)
-- [ ] Implementação dos catálogos de Filmes e Séries em modo Paisagem
+- [x] Implementação dos catálogos de Filmes e Séries em modo Paisagem (Backdrop dinâmico, temporadas e episódios)
 - [x] Configuração de push duplo para GitHub e GitLab
