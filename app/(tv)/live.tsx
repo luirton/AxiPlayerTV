@@ -186,7 +186,7 @@ export default function TVLiveScreen() {
   const handleZapping = (direction: 'next' | 'prev') => {
     if (!channels || channels.length === 0 || !activeChannel) return;
 
-    const currentIndex = channels.findIndex((c) => c.stream_id === activeChannel.stream_id);
+    const currentIndex = channels.findIndex((c) => Number(c.stream_id) === Number(activeChannel.stream_id));
     let targetIndex = 0;
 
     if (direction === 'next') {
