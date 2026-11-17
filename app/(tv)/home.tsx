@@ -76,11 +76,30 @@ export default function TVHomeScreen() {
       // Initialize Xtream credentials
       xtreamClient.setCredentials(profile.serverUrl, profile.username, profile.password);
 
-      // Fetch sample live channels, movies, and series concurrently
-      const [liveRes, vodRes, seriesRes] = await Promise.all([
+      // Carga sob demanda por categoria: evita download maciço de JSON de 25MB+ no boot da TV
+      const [liveRes, vodCatsRes, seriesCatsRes] = await Promise.all([
         xtreamClient.getLiveStreams().catch(() => []),
-        xtreamClient.getVodStreams().catch(() => []),
-        xtreamClient.getSeries().catch(() => []),
+        xtreamClient.getVodCategories().catch(() => []),
+        xtreamClient.getSeriesCategories().catch(() => []),
+      ]);
+
+      const firstVodCatId =
+        vodCatsRes && Array.isArray(vodCatsRes) && vodCatsRes.length > 0
+          ? vodCatsRes[0].category_id
+          : undefined;
+
+      const firstSeriesCatId =
+        seriesCatsRes && Array.isArray(seriesCatsRes) && seriesCatsRes.length > 0
+          ? seriesCatsRes[0].category_id
+          : undefined;
+
+      const [vodRes, seriesRes] = await Promise.all([
+        firstVodCatId
+          ? xtreamClient.getVodStreams(firstVodCatId).catch(() => [])
+          : xtreamClient.getVodStreams().catch(() => []),
+        firstSeriesCatId
+          ? xtreamClient.getSeries(firstSeriesCatId).catch(() => [])
+          : xtreamClient.getSeries().catch(() => []),
       ]);
 
       const topLive = (liveRes || []).slice(0, 15);
@@ -91,7 +110,10 @@ export default function TVHomeScreen() {
       setMovies(topMovies);
       setSeries(topSeries);
 
-      // Spotlight Hero item
+      // Sincroniza marcação de recarga de lista da TV
+      storage.markPlaylistReloaded().catch(() => {});
+
+      // Spotlight Hero item com metadados enriquecidos
       if (topMovies.length > 0) {
         const poolSize = Math.min(topMovies.length, 10);
         const randomIdx = Math.floor(Math.random() * poolSize);

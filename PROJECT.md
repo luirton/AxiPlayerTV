@@ -92,15 +92,48 @@ Diferente do app mobile, o **Axi Player TV** é construído desde a raiz para:
   * Se o menu OSD estiver aberto: Fecha o menu OSD e mantém o vídeo em tela cheia.
   * Se já estiver em tela cheia: Exibe diálogo de confirmação "Deseja sair para o menu principal?".
 
-### 4.5 Módulo VOD (Filmes e Séries)
-* **Visualização em Paisagem com Prévia Rápida:**
-  * Ao navegar com o foco sobre os pôsteres dos filmes/séries, o topo da tela atualiza dinamicamente a capa horizontal (backdrop), trailer/teaser, sinopse detalhada e botões:
-    * `[ ▶ Assistir ]`
-    * `[ ℹ Detalhes / Sinopse ]`
-    * `[ ⭐ Favoritar ]`
-* **Tela de Séries:**
-  * Seletor horizontal de Temporadas (Temporada 1, Temporada 2...)
-  * Grade horizontal de episódios com miniatura, título e duração.
+### 4.5 Novo Catálogo em Grade (Grid) de Filmes e Séries (Padrão Imagem 3)
+* **Barra de Categorias no TOPO:**
+  * O carrossel horizontal de categorias fica posicionado no topo absoluto da tela tanto em filmes quanto em séries, eliminando o antigo banner vertical volumoso.
+  * Cabeçalho completo com botão circular Voltar `[ ← ]`, nome da categoria ativa, contagem total de títulos (`2.090 títulos`) e botões de ordenação:
+    * `[ Padrão ]`
+    * `[ A-Z ]`
+    * `[ Z-A ]`
+* **Painel de Preview Compacto do Item Focado:**
+  * Abaixo da barra de categorias, um painel compacto (~115dp) exibe dinamicamente o backdrop do item com degradê escuro, título grande, badge `[ FILME ]` ou `[ SÉRIE ]`, nota `★ 8.4`, formato `4K UHD`, ano e sinopse em 2 linhas.
+* **Grade (Grid) com Rolagem Vertical:**
+  * Grade em 6 colunas ocupando todo o restante da tela, permitindo visualizar de 12 a 18 pôsteres simultaneamente na TV com rolagem vertical suave via D-Pad.
+  * Posters enriquecidos via `EnrichedPosterImage` com tratamento de falhas e badges visuais.
+  * Ao navegar com as teclas direcionais (Cima/Baixo/Esquerda/Direita), o preview compacto superior atualiza dinamicamente em tempo real.
+  * Ao pressionar **OK** em qualquer card da grade, abre imediatamente a **Tela de Detalhes Cinematográfica (Imagem 4)**.
+
+### 4.8 Nova Tela de Detalhes Cinematográfica da Mídia (Padrão Imagem 4)
+* **Visualização Imersiva em Tela Cheia:**
+  * Tela modal nativa cobrindo 100% da área da TV (inclusive sobrepondo a sidebar), isolando o foco D-Pad e eliminando fugas de navegação.
+  * **Correção da Navegação D-Pad (Imagem 2):** Ao estar posicionado no botão circular Voltar `[ < ]` e pressionar a tecla **PARA BAIXO**, o foco desce estritamente para o botão de ação principal `[ ▶ Assistir ]`, sem qualquer fuga para a barra lateral.
+* **Backdrop Panorâmico e Identidade:**
+  * Imagem backdrop em alta definição no topo com degradê suave para o fundo dark `#070A12`.
+  * Título grande em negrito 32px (`fontWeight: '900'`) e linha de metadados: `Ano • Categoria • Duração • ⭐ Nota`.
+* **Botão Principal Neon de Destaque:**
+  * Botão largo com gradiente Neon Cyan/Purple (`#00E5FF` a `#A855F7`) **`[ ▶ Assistir ]`** (ou `[ ▶ Assistir T1:E1 ]` para séries), com foco preferencial automático (`hasTVPreferredFocus={true}`).
+* **Sinopse Completa e Ações Rápidas:**
+  * Sinopse completa com tipografia nítida e confortável para leitura na sala.
+  * Linha de botões de ação:
+    * `[ + Minha lista ]` / `[ ✓ Na lista ]` (armazenamento persistente)
+    * `[ 🕒 Assistir depois ]` / `[ ✓ Salvo ]`
+    * `[ ⭐ Favoritar ]` / `[ ⭐ Favoritado ]`
+* **Para Séries: Temporadas e Episódios:**
+  * Seletor horizontal de Temporadas: `[ Temporada 1 (10) ]`, `[ Temporada 2 (8) ]`...
+  * Carrossel horizontal de cards de episódios com miniaturas enriquecidas, número do episódio (`EP. 01`), duração, título e sinopse. Pressionar OK em qualquer episódio inicia sua reprodução imediatamente.
+* **Seção "Você também pode gostar":**
+  * Carrossel horizontal no rodapé com até 14 títulos recomendados da mesma categoria. Clicar em qualquer recomendado atualiza a tela de detalhes instantaneamente.
+
+### 4.9 Player VOD com Seek D-Pad (+/- 10s) e Gestão de Faixas
+* **Seek no Controle Remoto:** Teclas Esquerda e Direita efetuam salto de 10 segundos com banner feedback em neon (`-10s` / `+10s`).
+* **Play / Pause:** Tecla central OK pausa e retoma o vídeo instantaneamente.
+* **Seletor de Áudio e Legendas:** Modais dedicados para troca de faixas de áudio e legendas nativas do stream.
+* **Tratamento Inteligente da Tecla Voltar:** Fecha o OSD/modais sem parar a reprodução; se o OSD já estiver oculto, exibe diálogo com a posição salva para continuar depois.
+* **Salvamento de Posição:** Persistência periódica do progresso para a fila de "Continuar Assistindo".
 
 ### 4.6 Teclado Virtual TV & Busca Global (`app/(tv)/search.tsx`)
 * Teclado virtual completo otimizado para o D-Pad do controle remoto com teclas alfanuméricas e ações rápidas (`ESPAÇO`, `APAGAR`, `LIMPAR`).
@@ -221,3 +254,32 @@ axi-player-tv/
   * O usuário informou erro de resolução de plugin (`Cannot find module '@expo/config-plugins'`) e aviso de `appVersionSource` ao rodar na WSL.
   * Corrigido import dos plugins para `expo/config-plugins`, criados os arquivos `app.plugin.js`, configurado `appVersionSource: "remote"` no `eas.json` e adicionado `expo-font`.
   * Novo commit: `b59887b` enviado com sucesso para o GitHub e GitLab.
+
+### Sessão: 17 de Novembro de 2026
+* **Portabilidade de Melhorias e Redesign de Filmes/Séries:**
+  * **Categorias no TOPO (Imagem 1 & 3):** Reposicionamento do carrossel horizontal de categorias no topo absoluto da tela tanto em filmes quanto em séries (`app/(tv)/movies.tsx` e `app/(tv)/series.tsx`), eliminando o antigo layout vertical truncado.
+  * **Novo Catálogo em Grade (Grid) 16:9 (Imagem 3):**
+    * Cabeçalho de categoria com botão circular Voltar `[ ← ]`, título em caixa alta, contagem total de títulos (`2.090 títulos`) e botões de ordenação (`Padrão`, `A-Z`, `Z-A`).
+    * Painel de preview compacto superior com backdrop dinâmico, nota `★`, formato e sinopse em 2 linhas do item focado.
+    * Grade vertical com 6 colunas, exibindo múltiplos títulos simultaneamente e permitindo navegação suave pelo D-Pad.
+  * **Nova Tela de Detalhes Cinematográfica (Imagem 4):**
+    * Ao clicar em qualquer filme ou série, abre a tela de detalhes imersiva em tela cheia (modal nativo isolado).
+    * Botão largo com gradiente Neon Cyan/Purple `[ ▶ Assistir ]` com foco preferencial automático (`hasTVPreferredFocus={true}`).
+    * Sinopse completa, botões de ação rápida (`[ + Minha lista ]`, `[ 🕒 Assistir depois ]`, `[ ⭐ Favoritar ]`).
+    * Para séries: seletor de temporadas e carrossel horizontal de episódios com miniaturas e metadados.
+    * Seção "Você também pode gostar" com carrossel de títulos recomendados da mesma categoria.
+  * **Correção da Navegação D-Pad (Imagem 2):**
+    * Resolvido o problema de fuga de foco para o menu lateral (TVSidebar) ao pressionar a tecla "Para Baixo" a partir do botão Voltar `[ < ]`. Com a tela de detalhes em janela modal nativa e o botão `[ ▶ Assistir ]` posicionado logo abaixo do cabeçalho, o foco desce estritamente para o botão de ação.
+  * **Enriquecimento de Metadados e Pôsteres:**
+    * Criação de `src/services/metadataEnricher.ts` com busca automática no IMDb (`v3.sg.media-imdb.com`), Cinemeta e iTunes Brasil com fallback e cache em memória/AsyncStorage.
+    * Criação de `src/components/common/EnrichedPosterImage.tsx` com estilo de foco neon e fallback automático em caso de URLs IPTV quebradas.
+  * **Blindagem do XtreamClient & Otimização de Performance:**
+    * Implementado `apiCache` com TTL de 10 min para prevenir OOM e re-download de JSONs de 25MB+.
+    * Timeouts diferenciados (12s para categoria, 45s geral com retorno `[]` gracioso).
+    * Fallback automático para a primeira categoria em caso de falha em `getSeries()`.
+    * Carga sob demanda no boot de Filmes, Séries e Início (`home.tsx`), abrindo as telas em menos de 300ms.
+  * **Player VOD com Seek D-Pad (+/- 10s):**
+    * Mapeamento de teclas direcionais Esquerda/Direita para avanço e recuo de 10s com banner feedback neon, play/pause na tecla OK, seletor de trilhas de áudio e legendas, e diálogo de saída com salvamento de progresso.
+  * **Gerenciador de Recarregamento de Lista (3 a 5 dias):**
+    * Opções de intervalo configuráveis no menu de Ajustes (`settings.tsx`), exibição do tempo da última sincronização e botão para forçar atualização imediata.
+  * Compilação TypeScript validada com **0 erros** (`tsc --noEmit`).

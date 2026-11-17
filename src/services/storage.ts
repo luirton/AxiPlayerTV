@@ -52,6 +52,8 @@ export interface AppSettings {
   playerEngine: 'exoplayer' | 'vlc';
   autoPlayNextEpisode: boolean;
   bufferSizeMs: number;
+  playlistReloadDays: number; // Intervalo para recarregar a lista (3 a 5 dias)
+  lastPlaylistReloadTimestamp?: number;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -59,6 +61,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   playerEngine: 'exoplayer',
   autoPlayNextEpisode: true,
   bufferSizeMs: 5000,
+  playlistReloadDays: 3,
+  lastPlaylistReloadTimestamp: Date.now(),
 };
 
 function fixAccountProtocol(account: SavedAccount): SavedAccount {
@@ -517,5 +521,27 @@ export const storage = {
     } catch {
       return null;
     }
+  },
+
+  // Gerenciamento de recarregamento da lista IPTV (3 a 5 dias)
+  async getPlaylistReloadDays(): Promise<number> {
+    const s = await this.getSettings();
+    return s.playlistReloadDays || 3;
+  },
+
+  async setPlaylistReloadDays(days: number): Promise<void> {
+    await this.saveSettings({ playlistReloadDays: days });
+  },
+
+  async isPlaylistReloadDue(): Promise<boolean> {
+    const s = await this.getSettings();
+    const days = s.playlistReloadDays || 3;
+    const last = s.lastPlaylistReloadTimestamp || 0;
+    const intervalMs = days * 24 * 60 * 60 * 1000;
+    return Date.now() - last >= intervalMs;
+  },
+
+  async markPlaylistReloaded(): Promise<void> {
+    await this.saveSettings({ lastPlaylistReloadTimestamp: Date.now() });
   },
 };

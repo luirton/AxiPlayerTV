@@ -8,9 +8,9 @@ import {
   StyleProp,
   Platform,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '../../theme/colors';
+import { EnrichedPosterImage } from '../common/EnrichedPosterImage';
 
 interface FocusableCardProps {
   title: string;
@@ -24,6 +24,7 @@ interface FocusableCardProps {
   width?: number;
   style?: StyleProp<ViewStyle>;
   hasTVPreferredFocus?: boolean;
+  type?: 'movie' | 'series';
 }
 
 export const FocusableCard: React.FC<FocusableCardProps> = ({
@@ -38,6 +39,7 @@ export const FocusableCard: React.FC<FocusableCardProps> = ({
   width = 160,
   style,
   hasTVPreferredFocus = false,
+  type = 'movie',
 }) => {
   const [isFocused, setIsFocused] = useState(false);
 
@@ -66,20 +68,15 @@ export const FocusableCard: React.FC<FocusableCardProps> = ({
         style,
       ]}
     >
-      {imageUrl ? (
-        <Image
-          source={{ uri: imageUrl }}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          transition={200}
-        />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, styles.placeholder]}>
-          <Text style={styles.placeholderText} numberOfLines={2}>
-            {title}
-          </Text>
-        </View>
-      )}
+      <EnrichedPosterImage
+        sourceUri={imageUrl}
+        title={title}
+        type={type}
+        containerStyle={StyleSheet.absoluteFill}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        fallbackIcon={type === 'series' ? 'albums-outline' : 'film-outline'}
+      />
 
       {/* Dark gradient at bottom for legible titles */}
       <LinearGradient

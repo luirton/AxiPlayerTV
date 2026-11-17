@@ -62,11 +62,23 @@ export class XtreamClient {
     return `${this.serverUrl}/player_api.php?username=${encodedUser}&password=${encodedPass}`;
   }
 
+  // Cache em memória de requisições para evitar OOM e re-download de 25MB+ de dados JSON em Smart TVs
+  private static apiCache = new Map<string, { data: any; timestamp: number }>();
+
+  public static clearCache(): void {
+    XtreamClient.apiCache.clear();
+  }
+
   /**
    * Executa requisições HTTP com User-Agent compatível com IPTV Smarters,
-   * timeout controlado e fallback automático de SSL/TLS (https <-> http).
+   * timeout controlado, cache em memória e fallback automático de SSL/TLS (https <-> http).
    */
   private async fetchJson<T>(url: string, timeoutMs: number = 20000): Promise<T> {
+    const cached = XtreamClient.apiCache.get(url);
+    if (cached && Date.now() - cached.timestamp < 10 * 60 * 1000) {
+      return cached.data as T;
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -101,7 +113,9 @@ export class XtreamClient {
       }
 
       try {
-        return JSON.parse(text) as T;
+        const parsed = JSON.parse(text) as T;
+        XtreamClient.apiCache.set(url, { data: parsed, timestamp: Date.now() });
+        return parsed;
       } catch (parseErr) {
         if (text.includes('<html') || text.includes('<!DOCTYPE') || text.includes('<head')) {
           throw new Error('O servidor respondeu com uma página web (HTML) em vez de dados JSON. Verifique a URL e porta do provedor.');
@@ -150,57 +164,103 @@ export class XtreamClient {
 
   public async getLiveCategories(): Promise<IptvCategory[]> {
     const url = `${this.getBaseApiUrl()}&action=get_live_categories`;
-    const res = await this.fetchJson<any>(url);
+    const res = await this.fetchJson<any>(url, 12000);
     return Array.isArray(res) ? res : [];
   }
 
   public async getLiveStreams(categoryId?: string): Promise<LiveChannel[]> {
     let url = `${this.getBaseApiUrl()}&action=get_live_streams`;
-    if (categoryId && categoryId !== 'all') {
+    const isAll = !categoryId || categoryId === 'all';
+    if (!isAll) {
       url += `&category_id=${encodeURIComponent(categoryId)}`;
     }
-    const res = await this.fetchJson<any>(url);
-    return Array.isArray(res) ? res : [];
+    const timeout = isAll ? 45000 : 12000;
+    try {
+      const res = await this.fetchJson<any>(url, timeout);
+      return Array.isArray(res) ? res : [];
+    } catch (e) {
+      if (isAll) {
+        console.warn('Falha graciosa ao carregar canais gerais:', e);
+        return [];
+      }
+      throw e;
+    }
   }
 
   public async getVodCategories(): Promise<IptvCategory[]> {
     const url = `${this.getBaseApiUrl()}&action=get_vod_categories`;
-    const res = await this.fetchJson<any>(url);
+    const res = await this.fetchJson<any>(url, 12000);
     return Array.isArray(res) ? res : [];
   }
 
   public async getVodStreams(categoryId?: string): Promise<VodMovie[]> {
     let url = `${this.getBaseApiUrl()}&action=get_vod_streams`;
-    if (categoryId && categoryId !== 'all') {
+    const isAll = !categoryId || categoryId === 'all';
+    if (!isAll) {
       url += `&category_id=${encodeURIComponent(categoryId)}`;
     }
-    const res = await this.fetchJson<any>(url);
-    return Array.isArray(res) ? res : [];
+    const timeout = isAll ? 45000 : 12000;
+    try {
+      const res = await this.fetchJson<any>(url, timeout);
+      return Array.isArray(res) ? res : [];
+    } catch (e) {
+      if (isAll) {
+        console.warn('Falha graciosa ao carregar catálogo completo de VOD:', e);
+        return [];
+      }
+      throw e;
+    }
   }
 
   public async getVodInfo(vodId: number): Promise<any> {
     const url = `${this.getBaseApiUrl()}&action=get_vod_info&vod_id=${vodId}`;
-    return this.fetchJson<any>(url);
+    return this.fetchJson<any>(url, 12000);
   }
 
   public async getSeriesCategories(): Promise<IptvCategory[]> {
     const url = `${this.getBaseApiUrl()}&action=get_series_categories`;
-    const res = await this.fetchJson<any>(url);
+    const res = await this.fetchJson<any>(url, 12000);
     return Array.isArray(res) ? res : [];
   }
 
   public async getSeries(categoryId?: string): Promise<SeriesItem[]> {
     let url = `${this.getBaseApiUrl()}&action=get_series`;
-    if (categoryId && categoryId !== 'all') {
+    const isAll = !categoryId || categoryId === 'all';
+    if (!isAll) {
       url += `&category_id=${encodeURIComponent(categoryId)}`;
+      const res = await this.fetchJson<any>(url, 12000);
+      return Array.isArray(res) ? res : [];
     }
-    const res = await this.fetchJson<any>(url);
-    return Array.isArray(res) ? res : [];
+
+    // Consulta geral com 45 segundos e fallback automático para a primeira categoria
+    try {
+      const res = await this.fetchJson<any>(url, 45000);
+      if (Array.isArray(res) && res.length > 0) {
+        return res;
+      }
+    } catch (e) {
+      console.warn('Consulta geral de séries falhou ou expirou. Acionando fallback...', e);
+    }
+
+    // Fallback Automático para Séries: se getSeries() sem parâmetro falhar ou retornar vazio
+    try {
+      const cats = await this.getSeriesCategories();
+      if (cats && cats.length > 0) {
+        const firstCatId = cats[0].category_id;
+        const fallbackUrl = `${this.getBaseApiUrl()}&action=get_series&category_id=${encodeURIComponent(firstCatId)}`;
+        const fallbackRes = await this.fetchJson<any>(fallbackUrl, 12000);
+        return Array.isArray(fallbackRes) ? fallbackRes : [];
+      }
+    } catch (fallbackErr) {
+      console.warn('Erro no fallback da primeira categoria de séries:', fallbackErr);
+    }
+
+    return [];
   }
 
   public async getSeriesInfo(seriesId: number): Promise<SeriesInfoResponse> {
     const url = `${this.getBaseApiUrl()}&action=get_series_info&series_id=${seriesId}`;
-    return this.fetchJson<SeriesInfoResponse>(url);
+    return this.fetchJson<SeriesInfoResponse>(url, 12000);
   }
 
   public async getShortEpg(streamId: number): Promise<EpgProgram[]> {
