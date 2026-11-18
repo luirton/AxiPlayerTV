@@ -40,6 +40,7 @@ export default function TVLiveScreen() {
   const [showExitDialog, setShowExitDialog] = useState(false);
 
   const zappingTimerRef = useRef<any>(null);
+  const centerFocusRef = useRef<any>(null);
 
   // Initialize expo-video player
   const player = useVideoPlayer(streamUrl, (p) => {
@@ -226,17 +227,17 @@ export default function TVLiveScreen() {
         setShowExitDialog(false);
         return true;
       }
+      // Se estiver no Guia/Menu e apertar voltar, vai para a Home (Imagem 2)
       if (isDrawerOpen) {
-        setIsDrawerOpen(false);
+        router.replace('/(tv)/home');
         return true;
       }
       if (isZappingBannerOpen) {
         setIsZappingBannerOpen(false);
-        return true;
       }
 
-      // In clean fullscreen: show exit prompt
-      setShowExitDialog(true);
+      // Se estiver assistindo ao vídeo e apertar voltar, abre o menu de canais (Imagem 1)
+      setIsDrawerOpen(true);
       return true;
     };
 
@@ -250,10 +251,10 @@ export default function TVLiveScreen() {
     loadCategoryChannels(cat.category_id);
   };
 
-  // Handle Channel Select from Drawer
+  // Handle Channel Select from Drawer: ao clicar no canal já vai direto para o vídeo (Imagem 2)
   const handleChannelSelect = (channel: LiveChannel) => {
     tuneChannel(channel);
-    // Keep video playing and briefly display zapping bar
+    setIsDrawerOpen(false);
   };
 
   if (isLoading) {
@@ -284,27 +285,45 @@ export default function TVLiveScreen() {
         )}
       </View>
 
-      {/* 2. Área de Toque/Foco Invisível para Interação Remota no Vídeo */}
+      {/* 2. Ponte de Navegação D-Pad para Zapping Vertical Cima/Baixo */}
       {!isDrawerOpen && !showExitDialog && (
-        <Pressable
-          focusable={true}
-          style={StyleSheet.absoluteFill}
-          onPress={() => {
-            if (isZappingBannerOpen) {
-              setIsDrawerOpen(true);
-              setIsZappingBannerOpen(false);
-            } else {
-              triggerZappingBanner();
-            }
-          }}
-        >
-          {/* Quick D-Pad Touch/Click Hotspots for testing */}
-          <View style={styles.hotspotBar}>
-            <HotspotAction icon="chevron-up" onPress={() => handleZapping('prev')} />
-            <HotspotAction icon="list" onPress={() => setIsDrawerOpen(true)} />
-            <HotspotAction icon="chevron-down" onPress={() => handleZapping('next')} />
-          </View>
-        </Pressable>
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          {/* Alvo Superior: D-Pad Cima (Canal Anterior) */}
+          <Pressable
+            focusable={true}
+            onFocus={() => {
+              handleZapping('prev');
+              setTimeout(() => centerFocusRef.current?.focus?.(), 100);
+            }}
+            style={styles.dpadTargetHidden}
+          />
+
+          {/* Alvo Central: Foco Padrão do Controle Remoto */}
+          <Pressable
+            ref={centerFocusRef}
+            focusable={true}
+            hasTVPreferredFocus={!isDrawerOpen && !showExitDialog && !isZappingBannerOpen}
+            onPress={() => {
+              if (isZappingBannerOpen) {
+                setIsDrawerOpen(true);
+                setIsZappingBannerOpen(false);
+              } else {
+                triggerZappingBanner();
+              }
+            }}
+            style={styles.dpadCenterTarget}
+          />
+
+          {/* Alvo Inferior: D-Pad Baixo (Próximo Canal) */}
+          <Pressable
+            focusable={true}
+            onFocus={() => {
+              handleZapping('next');
+              setTimeout(() => centerFocusRef.current?.focus?.(), 100);
+            }}
+            style={styles.dpadTargetHidden}
+          />
+        </View>
       )}
 
       {/* 3. On-Screen Display (OSD) Multicamadas: Gaveta Translúcida & Zapping */}
@@ -370,27 +389,6 @@ export default function TVLiveScreen() {
   );
 }
 
-function HotspotAction({
-  icon,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-}) {
-  const [isFocused, setIsFocused] = useState(false);
-  return (
-    <Pressable
-      focusable={true}
-      onFocus={() => setIsFocused(true)}
-      onBlur={() => setIsFocused(false)}
-      onPress={onPress}
-      style={[styles.hotspotBtn, isFocused && styles.focusedBtn]}
-    >
-      <Ionicons name={icon} size={16} color="#AAA" />
-    </Pressable>
-  );
-}
-
 function ModalActionButton({
   label,
   isPrimary,
@@ -443,30 +441,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
+  dpadTargetHidden: {
+    height: 35,
+    width: '100%',
+    opacity: 0,
+  },
+  dpadCenterTarget: {
+    flex: 1,
+    width: '100%',
+  },
   blackBackground: {
     flex: 1,
     backgroundColor: '#000000',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  hotspotBar: {
-    position: 'absolute',
-    top: 20,
-    right: 20,
-    flexDirection: 'row',
-    gap: 8,
-    opacity: 0.35,
-  },
-  hotspotBtn: {
-    backgroundColor: 'rgba(20, 20, 25, 0.7)',
-    padding: 8,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  focusedBtn: {
-    borderColor: colors.focusRing,
-    backgroundColor: colors.focusRing,
   },
 
   // Exit Modal

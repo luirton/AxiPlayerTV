@@ -9,17 +9,21 @@ import {
   Modal,
   Pressable,
   BackHandler,
+  Linking,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { FocusableCard } from '../../src/components/tv/FocusableCard';
+import { FocusablePill } from '../../src/components/tv/FocusablePill';
+import { TVBackButton } from '../../src/components/tv/TVBackButton';
 import { EnrichedPosterImage } from '../../src/components/common/EnrichedPosterImage';
 import { xtreamClient } from '../../src/services/xtreamClient';
 import { storage } from '../../src/services/storage';
 import { enrichMediaMetadata, EnrichedMetadata } from '../../src/services/metadataEnricher';
 import { colors } from '../../src/theme/colors';
+import { tvColors, tvStyles } from '../../src/theme/tvTheme';
 import {
   Category,
   SeriesStream,
@@ -41,19 +45,41 @@ export default function TVSeriesScreen() {
   const [sortMode, setSortMode] = useState<SortMode>('default');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Compact Preview State (topo)
-  const [previewMeta, setPreviewMeta] = useState<EnrichedMetadata | null>(null);
-  const debounceTimerRef = useRef<any>(null);
-
   // Details Modal State (Imagem 4)
   const [selectedSeriesForDetails, setSelectedSeriesForDetails] = useState<SeriesStream | null>(null);
   const [seriesDetails, setSeriesDetails] = useState<SeriesInfoResponse | null>(null);
   const [detailsMeta, setDetailsMeta] = useState<EnrichedMetadata | null>(null);
   const [selectedSeasonNumber, setSelectedSeasonNumber] = useState<string>('1');
   const [focusedEpisode, setFocusedEpisode] = useState<SeriesEpisode | null>(null);
+  const [focusedActionBtn, setFocusedActionBtn] = useState<string | null>('play');
   const [isInMyList, setIsInMyList] = useState<boolean>(false);
   const [isInWatchLater, setIsInWatchLater] = useState<boolean>(false);
+  const [hasEpisodeProgress, setHasEpisodeProgress] = useState<boolean>(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState<boolean>(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const checkProgress = async () => {
+      const epId = focusedEpisode?.id;
+      if (epId) {
+        const prog = await storage.getWatchProgress(epId).catch(() => null);
+        if (isMounted) {
+          setHasEpisodeProgress(
+            !!(prog && prog.positionSec > 10 && prog.durationSec > 0 && prog.positionSec < prog.durationSec - 30)
+          );
+        }
+      } else if (selectedSeriesForDetails) {
+        const prog = await storage.getWatchProgress(selectedSeriesForDetails.series_id).catch(() => null);
+        if (isMounted) {
+          setHasEpisodeProgress(!!(prog && prog.positionSec > 10));
+        }
+      }
+    };
+    checkProgress();
+    return () => {
+      isMounted = false;
+    };
+  }, [focusedEpisode, selectedSeriesForDetails]);
 
   useEffect(() => {
     loadSeriesCategories();
@@ -109,10 +135,9 @@ export default function TVSeriesScreen() {
 
       setSeriesList(list || []);
       if (list && list.length > 0) {
-        handleFocusSeries(list[0]);
+        setFocusedSeries(list[0]);
       } else {
         setFocusedSeries(null);
-        setPreviewMeta(null);
       }
     } catch (err) {
       console.error('Error loading series:', err);
@@ -121,18 +146,6 @@ export default function TVSeriesScreen() {
 
   const handleFocusSeries = (series: SeriesStream) => {
     setFocusedSeries(series);
-
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-    debounceTimerRef.current = setTimeout(async () => {
-      try {
-        const meta = await enrichMediaMetadata(series.name, 'series');
-        setPreviewMeta(meta);
-      } catch {
-        setPreviewMeta(null);
-      }
-    }, 280);
   };
 
   // Abre a Tela de Detalhes da Série (Imagem 4) ao clicar no card
@@ -283,20 +296,6 @@ export default function TVSeriesScreen() {
     return seriesList;
   }, [seriesList, sortMode]);
 
-  // Metadados do Compact Preview (topo)
-  const previewRating =
-    previewMeta?.rating ||
-    (focusedSeries?.rating_5based ? (Number(focusedSeries.rating_5based) * 2).toFixed(1) : '8.6');
-  const previewYear = previewMeta?.year || '2025';
-  const previewBackdrop =
-    previewMeta?.backdrop ||
-    previewMeta?.poster ||
-    focusedSeries?.backdrop_path?.[0] ||
-    focusedSeries?.cover;
-  const previewPlot =
-    previewMeta?.plot ||
-    focusedSeries?.plot ||
-    'Série completa com temporadas e episódios em alta definição.';
 
   // Metadados da Tela de Detalhes (Imagem 4)
   const detailsSeriesInfo = seriesDetails?.info;
@@ -348,16 +347,11 @@ export default function TVSeriesScreen() {
       <View style={styles.topHeaderArea}>
         {/* Linha 1: Título da Categoria, Contagem e Filtros de Ordenação */}
         <View style={styles.categoryInfoBar}>
-          <Pressable
-            focusable={true}
+          <TVBackButton
             onPress={() => (router.canGoBack() ? router.back() : router.push('/(tv)/home'))}
-            style={({ focused }: any) => [
-              styles.catalogBackBtn,
-              focused && styles.catalogBackBtnFocused,
-            ]}
-          >
-            <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
-          </Pressable>
+            label=""
+            style={{ marginRight: 14 }}
+          />
 
           <View style={styles.categoryTitleGroup}>
             <Text style={styles.categoryMainTitle}>
@@ -370,18 +364,21 @@ export default function TVSeriesScreen() {
 
           {/* Filtros de Ordenação (Padrão, A-Z, Z-A) */}
           <View style={styles.sortFilterGroup}>
-            <SortPill
+            <FocusablePill
               label="Padrão"
+              variant="sort"
               isSelected={sortMode === 'default'}
               onPress={() => setSortMode('default')}
             />
-            <SortPill
+            <FocusablePill
               label="A-Z"
+              variant="sort"
               isSelected={sortMode === 'asc'}
               onPress={() => setSortMode('asc')}
             />
-            <SortPill
+            <FocusablePill
               label="Z-A"
+              variant="sort"
               isSelected={sortMode === 'desc'}
               onPress={() => setSortMode('desc')}
             />
@@ -398,9 +395,10 @@ export default function TVSeriesScreen() {
             {categories.map((cat) => {
               const isSelected = selectedCategory?.category_id === cat.category_id;
               return (
-                <CategoryPill
+                <FocusablePill
                   key={cat.category_id}
-                  title={cat.category_name}
+                  label={cat.category_name}
+                  variant="category"
                   isSelected={isSelected}
                   onPress={() => {
                     setSelectedCategory(cat);
@@ -414,54 +412,7 @@ export default function TVSeriesScreen() {
       </View>
 
       {/* ============================================================== */}
-      {/* 2. PREVIEW COMPACTO DO ITEM FOCADO (IMAGEM 3)                  */}
-      {/* ============================================================== */}
-      {focusedSeries ? (
-        <View style={styles.compactPreviewContainer}>
-          {previewBackdrop ? (
-            <Image
-              source={{ uri: previewBackdrop }}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-              transition={200}
-            />
-          ) : null}
-          <LinearGradient
-            colors={['rgba(7, 10, 18, 0.75)', 'rgba(7, 10, 18, 0.95)', '#070A12']}
-            style={StyleSheet.absoluteFill}
-          />
-          <LinearGradient
-            colors={['rgba(7, 10, 18, 0.98)', 'rgba(7, 10, 18, 0.7)', 'transparent']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={StyleSheet.absoluteFill}
-          />
-
-          <View style={styles.compactPreviewContent}>
-            <Text style={styles.previewMovieTitle} numberOfLines={1}>
-              {focusedSeries.name}
-            </Text>
-
-            <View style={styles.previewMetaRow}>
-              <View style={[styles.previewBadge, { backgroundColor: colors.neonPurple }]}>
-                <Text style={styles.previewBadgeText}>SÉRIE</Text>
-              </View>
-              <Text style={styles.previewRatingText}>★ {previewRating}</Text>
-              <Text style={styles.previewMetaDot}>•</Text>
-              <Text style={styles.previewMetaText}>{previewYear}</Text>
-              <Text style={styles.previewMetaDot}>•</Text>
-              <Text style={styles.previewMetaText}>HD / 4K</Text>
-            </View>
-
-            <Text style={styles.previewSynopsisText} numberOfLines={2}>
-              {previewPlot}
-            </Text>
-          </View>
-        </View>
-      ) : null}
-
-      {/* ============================================================== */}
-      {/* 3. GRADE (GRID) DE SÉRIES COM ROLAGEM VERTICAL (IMAGEM 3)      */}
+      {/* 2. GRADE (GRID) DE SÉRIES COM ROLAGEM VERTICAL                 */}
       {/* ============================================================== */}
       <View style={styles.gridWrapper}>
         <FlatList
@@ -507,21 +458,9 @@ export default function TVSeriesScreen() {
         onRequestClose={handleCloseDetails}
       >
         <View style={styles.detailsScreenContainer}>
-          {/* Top Bar com Botão Voltar */}
+          {/* Top Bar com Botão Voltar Padronizado (Imagem 3) */}
           <View style={styles.detailsTopBar}>
-            <Pressable
-              focusable={true}
-              onPress={handleCloseDetails}
-              style={({ focused }: any) => [
-                styles.detailsBackCircleBtn,
-                focused && styles.detailsBackCircleBtnFocused,
-              ]}
-            >
-              <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
-            </Pressable>
-            <Text style={styles.detailsTopBarTitle} numberOfLines={1}>
-              {selectedSeriesForDetails?.name}
-            </Text>
+            <TVBackButton onPress={handleCloseDetails} label="Voltar" />
           </View>
 
           <ScrollView
@@ -530,85 +469,112 @@ export default function TVSeriesScreen() {
             showsVerticalScrollIndicator={false}
           >
             {/* Backdrop Imersivo Superior com Degradê */}
-            <View style={styles.detailsHeroBackdrop}>
-              {detailsBackdrop ? (
-                <Image
-                  source={{ uri: detailsBackdrop }}
-                  style={StyleSheet.absoluteFill}
-                  contentFit="cover"
-                />
-              ) : null}
-
-              <LinearGradient
-                colors={['transparent', 'rgba(7, 10, 18, 0.7)', '#070A12']}
+            {detailsBackdrop ? (
+              <Image
+                source={{ uri: detailsBackdrop }}
                 style={StyleSheet.absoluteFill}
+                contentFit="cover"
               />
-              <LinearGradient
-                colors={['rgba(7, 10, 18, 0.85)', 'rgba(7, 10, 18, 0.3)', 'transparent']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={StyleSheet.absoluteFill}
-              />
+            ) : null}
+            <LinearGradient
+              colors={['rgba(7, 10, 18, 0.85)', 'rgba(7, 10, 18, 0.96)', '#070A12']}
+              style={StyleSheet.absoluteFill}
+            />
 
-              {/* Informações Principais da Série */}
-              <View style={styles.detailsHeroInfo}>
-                <Text style={styles.detailsMainTitle}>
+            {/* Hero Section: Side-by-Side (Imagem 3 Standard) */}
+            <View style={styles.heroRow}>
+              {/* Left: Poster with "DESTAQUE" Badge */}
+              <View style={styles.posterWrapper}>
+                {selectedSeriesForDetails?.cover ? (
+                  <Image
+                    source={{ uri: selectedSeriesForDetails.cover }}
+                    style={styles.posterImage}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View style={styles.posterPlaceholder}>
+                    <Ionicons name="tv" size={40} color="#666" />
+                  </View>
+                )}
+                <View style={styles.destaqueBadge}>
+                  <Text style={styles.destaqueBadgeText}>DESTAQUE</Text>
+                </View>
+              </View>
+
+              {/* Right: Info, Badges, Title, Synopsis, Actions */}
+              <View style={styles.heroInfoCol}>
+                {/* Badges: 4K UHD, ⭐ 8.2 • 2025 */}
+                <View style={styles.metaBadgesRow}>
+                  <View style={styles.badge4K}>
+                    <Text style={styles.badge4KText}>4K UHD</Text>
+                  </View>
+                  <Text style={styles.ratingText}>⭐ {detailsRating}</Text>
+                  <Text style={styles.metaDot}>•</Text>
+                  <Text style={styles.yearText}>{detailsYear}</Text>
+                </View>
+
+                {/* Title */}
+                <Text style={styles.detailsMainTitle} numberOfLines={2}>
                   {selectedSeriesForDetails?.name}
                 </Text>
 
-                <View style={styles.detailsMetaRow}>
-                  <Text style={styles.detailsMetaText}>{detailsYear}</Text>
-                  <Text style={styles.detailsMetaDot}>•</Text>
-                  <Text style={styles.detailsMetaText}>{detailsGenre}</Text>
-                  <Text style={styles.detailsMetaDot}>•</Text>
-                  <Text style={styles.detailsMetaText}>
-                    {seasonKeys.length} {seasonKeys.length === 1 ? 'Temporada' : 'Temporadas'}
-                  </Text>
-                  <Text style={styles.detailsMetaDot}>•</Text>
-                  <Text style={styles.detailsMetaRating}>⭐ {detailsRating}</Text>
-                </View>
-
-                {/* BOTÃO PRINCIPAL NEON: ASSISTIR (Foco Preferencial Automático) */}
-                <Pressable
-                  focusable={true}
-                  hasTVPreferredFocus={true}
-                  onPress={handlePlayFirstEpisode}
-                  style={({ focused }: any) => [
-                    styles.primaryWatchButton,
-                    focused && styles.primaryWatchButtonFocused,
-                  ]}
-                >
-                  <LinearGradient
-                    colors={['#00E5FF', '#A855F7']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.primaryWatchGradient}
-                  >
-                    <Ionicons name="play" size={24} color="#000000" />
-                    <Text style={styles.primaryWatchText}>
-                      Assistir {focusedEpisode ? `T${focusedEpisode.season}:E${focusedEpisode.episode_num}` : 'Série'}
-                    </Text>
-                  </LinearGradient>
-                </Pressable>
-
-                {/* Sinopse Completa */}
-                <Text style={styles.detailsPlotText}>
+                {/* Synopsis */}
+                <Text style={styles.detailsPlotText} numberOfLines={3}>
                   {focusedEpisode?.info?.plot || detailsPlot}
                 </Text>
 
-                {/* Linha de Botões de Ação Rápidos (Minha Lista, Assistir Depois, Favoritar) */}
-                <View style={styles.detailsActionRow}>
+                {/* Tags: [ Cinema TV ] [ Comédia ] X Temporadas */}
+                <View style={styles.genreRow}>
+                  <View style={styles.genreChip}>
+                    <Text style={styles.genreChipText}>{detailsGenre || 'Cinema TV'}</Text>
+                  </View>
+                  <View style={styles.genreChip}>
+                    <Text style={styles.genreChipText}>
+                      {seasonKeys.length} {seasonKeys.length === 1 ? 'Temporada' : 'Temporadas'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Action Buttons Row (Imagem 3) */}
+                <View style={styles.actionsRow}>
+                  {/* Assistir / Continuar Assistindo (Padrão Branco Sólido de Alto Contraste) */}
                   <Pressable
                     focusable={true}
+                    hasTVPreferredFocus={true}
+                    onFocus={() => setFocusedActionBtn('play')}
+                    onBlur={() => setFocusedActionBtn(null)}
+                    onPress={handlePlayFirstEpisode}
+                    style={[
+                      styles.watchButton,
+                      focusedActionBtn === 'play' && styles.watchButtonFocused,
+                    ]}
+                  >
+                    <Ionicons name="play" size={20} color="#070A12" />
+                    <Text style={styles.watchButtonText}>
+                      {hasEpisodeProgress
+                        ? focusedEpisode
+                          ? `Continuar T${focusedEpisode.season}:E${focusedEpisode.episode_num}`
+                          : 'Continuar Assistindo'
+                        : focusedEpisode
+                        ? `Assistir T${focusedEpisode.season}:E${focusedEpisode.episode_num}`
+                        : 'Assistir T1:E1'}
+                    </Text>
+                  </Pressable>
+
+                  {/* + Minha lista */}
+                  <Pressable
+                    focusable={true}
+                    onFocus={() => setFocusedActionBtn('list')}
+                    onBlur={() => setFocusedActionBtn(null)}
                     onPress={() => selectedSeriesForDetails && handleToggleMyList(selectedSeriesForDetails)}
-                    style={({ focused }: any) => [
+                    style={[
                       styles.actionIconBtn,
-                      focused && styles.actionIconBtnFocused,
+                      focusedActionBtn === 'list' && styles.actionIconBtnFocused,
                     ]}
                   >
                     <Ionicons
                       name={isInMyList ? 'checkmark' : 'add'}
-                      size={24}
+                      size={20}
                       color={isInMyList ? colors.primary : '#FFFFFF'}
                     />
                     <Text style={[styles.actionBtnText, isInMyList && { color: colors.primary }]}>
@@ -616,17 +582,20 @@ export default function TVSeriesScreen() {
                     </Text>
                   </Pressable>
 
+                  {/* 🕒 Assistir depois */}
                   <Pressable
                     focusable={true}
+                    onFocus={() => setFocusedActionBtn('later')}
+                    onBlur={() => setFocusedActionBtn(null)}
                     onPress={() => selectedSeriesForDetails && handleToggleWatchLater(selectedSeriesForDetails)}
-                    style={({ focused }: any) => [
+                    style={[
                       styles.actionIconBtn,
-                      focused && styles.actionIconBtnFocused,
+                      focusedActionBtn === 'later' && styles.actionIconBtnFocused,
                     ]}
                   >
                     <Ionicons
                       name={isInWatchLater ? 'time' : 'time-outline'}
-                      size={24}
+                      size={20}
                       color={isInWatchLater ? colors.primary : '#FFFFFF'}
                     />
                     <Text style={[styles.actionBtnText, isInWatchLater && { color: colors.primary }]}>
@@ -634,12 +603,15 @@ export default function TVSeriesScreen() {
                     </Text>
                   </Pressable>
 
+                  {/* ⭐ Favoritar */}
                   <Pressable
                     focusable={true}
+                    onFocus={() => setFocusedActionBtn('fav')}
+                    onBlur={() => setFocusedActionBtn(null)}
                     onPress={() => selectedSeriesForDetails && handleToggleFavorite(selectedSeriesForDetails)}
-                    style={({ focused }: any) => [
+                    style={[
                       styles.actionIconBtn,
-                      focused && styles.actionIconBtnFocused,
+                      focusedActionBtn === 'fav' && styles.actionIconBtnFocused,
                     ]}
                   >
                     <Ionicons
@@ -648,7 +620,7 @@ export default function TVSeriesScreen() {
                           ? 'star'
                           : 'star-outline'
                       }
-                      size={24}
+                      size={20}
                       color={
                         selectedSeriesForDetails && favoriteIds.includes(selectedSeriesForDetails.series_id)
                           ? '#FFD700'
@@ -667,6 +639,35 @@ export default function TVSeriesScreen() {
                       Favoritar
                     </Text>
                   </Pressable>
+
+                  {/* [ 📺 Trailer ] */}
+                  {seriesDetails?.info?.youtube_trailer ? (
+                    <Pressable
+                      focusable={true}
+                      onFocus={() => setFocusedActionBtn('trailer')}
+                      onBlur={() => setFocusedActionBtn(null)}
+                      onPress={() => {
+                        const tr = seriesDetails.info.youtube_trailer;
+                        const url = tr.startsWith('http') ? tr : `https://www.youtube.com/watch?v=${tr}`;
+                        Linking.openURL(url).catch(() => {});
+                      }}
+                      style={[
+                        styles.trailerButton,
+                        focusedActionBtn === 'trailer' && styles.actionIconBtnFocused,
+                      ]}
+                    >
+                      <Ionicons name="logo-youtube" size={18} color="#FF0000" />
+                      <Text style={styles.trailerButtonText}>Trailer</Text>
+                    </Pressable>
+                  ) : null}
+
+                  {/* Rating & Year Badge */}
+                  <View style={styles.ratingBox}>
+                    <Ionicons name="star" size={16} color="#FFD700" />
+                    <Text style={styles.ratingNumber}>{detailsRating}</Text>
+                    <Text style={styles.ratingDivider}>|</Text>
+                    <Text style={styles.ratingYear}>{detailsYear}</Text>
+                  </View>
                 </View>
               </View>
             </View>
@@ -688,29 +689,17 @@ export default function TVSeriesScreen() {
                     const isSelected = selectedSeasonNumber === seasonKey;
                     const seasonEpsCount = seriesDetails?.episodes?.[seasonKey]?.length || 0;
                     return (
-                      <Pressable
+                      <FocusablePill
                         key={seasonKey}
-                        focusable={true}
+                        label={`Temporada ${seasonKey} (${seasonEpsCount})`}
+                        variant="tab"
+                        isSelected={isSelected}
                         onPress={() => {
                           setSelectedSeasonNumber(seasonKey);
                           const eps = seriesDetails?.episodes?.[seasonKey] || [];
                           if (eps.length > 0) setFocusedEpisode(eps[0]);
                         }}
-                        style={({ focused }: any) => [
-                          styles.seasonPill,
-                          isSelected && styles.seasonPillSelected,
-                          focused && styles.seasonPillFocused,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.seasonPillText,
-                            isSelected && styles.seasonPillTextSelected,
-                          ]}
-                        >
-                          Temporada {seasonKey} ({seasonEpsCount})
-                        </Text>
-                      </Pressable>
+                      />
                     );
                   })}
                 </ScrollView>
@@ -800,66 +789,6 @@ export default function TVSeriesScreen() {
   );
 }
 
-// Item Pill de Categoria no Topo
-function CategoryPill({
-  title,
-  isSelected,
-  onPress,
-}: {
-  title: string;
-  isSelected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      focusable={true}
-      onPress={onPress}
-      style={({ focused }: any) => [
-        styles.catPill,
-        isSelected && styles.catPillSelected,
-        focused && styles.catPillFocused,
-      ]}
-    >
-      <Text
-        style={[
-          styles.catPillText,
-          isSelected && styles.catPillTextSelected,
-        ]}
-        numberOfLines={1}
-      >
-        {title}
-      </Text>
-    </Pressable>
-  );
-}
-
-// Item Pill de Ordenação (Padrão, A-Z, Z-A)
-function SortPill({
-  label,
-  isSelected,
-  onPress,
-}: {
-  label: string;
-  isSelected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      focusable={true}
-      onPress={onPress}
-      style={({ focused }: any) => [
-        styles.sortPill,
-        isSelected && styles.sortPillSelected,
-        focused && styles.sortPillFocused,
-      ]}
-    >
-      <Text style={[styles.sortPillText, isSelected && styles.sortPillTextSelected]}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -935,8 +864,8 @@ const styles = StyleSheet.create({
     borderColor: '#1E2845',
   },
   sortPillSelected: {
-    backgroundColor: '#FF6A00',
-    borderColor: '#FF8A00',
+    backgroundColor: colors.primary, // #00E5FF (Cores do sistema)
+    borderColor: colors.primary,
   },
   sortPillFocused: {
     borderColor: colors.focusRing,
@@ -985,63 +914,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
 
-  /* 2. Compact Preview: Item focado na grade */
-  compactPreviewContainer: {
-    height: 115,
-    backgroundColor: '#0E1322',
-    position: 'relative',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: '#161B2E',
-  },
-  compactPreviewContent: {
-    maxWidth: '75%',
-    zIndex: 2,
-  },
-  previewMovieTitle: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '900',
-    marginBottom: 4,
-  },
-  previewMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  previewBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  previewBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: '900',
-  },
-  previewRatingText: {
-    color: '#FFD700',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  previewMetaDot: {
-    color: '#555',
-    fontSize: 11,
-  },
-  previewMetaText: {
-    color: '#8E8E93',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  previewSynopsisText: {
-    color: '#A0A0A5',
-    fontSize: 12,
-    lineHeight: 16,
-  },
-
-  /* 3. Grid de Séries */
+  /* 2. Grid de Séries */
   gridWrapper: {
     flex: 1,
     paddingHorizontal: 20,
@@ -1106,6 +979,154 @@ const styles = StyleSheet.create({
     paddingHorizontal: 36,
     paddingBottom: 32,
     backgroundColor: '#0A0E18',
+  },
+  /* Hero Side-by-Side (Imagem 3 Standard) */
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    marginTop: 14,
+    marginBottom: 20,
+  },
+  posterWrapper: {
+    width: 150,
+    height: 220,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#151C30',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    marginRight: 24,
+    position: 'relative',
+  },
+  posterImage: {
+    width: '100%',
+    height: '100%',
+  },
+  posterPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  destaqueBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: colors.secondary, // #A855F7 (Cores do sistema)
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  destaqueBadgeText: {
+    color: '#FFFFFF',
+    fontWeight: '900',
+    fontSize: 9,
+    letterSpacing: 0.5,
+  },
+  heroInfoCol: {
+    flex: 1,
+  },
+  metaBadgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  badge4K: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  badge4KText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  ratingText: {
+    color: '#FFD700',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  metaDot: {
+    color: '#64748B',
+  },
+  yearText: {
+    color: '#CBD5E1',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  genreRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+    flexWrap: 'wrap',
+  },
+  genreChip: {
+    backgroundColor: 'rgba(21, 28, 48, 0.75)',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#1E2845',
+  },
+  genreChipText: {
+    color: '#E0E7FF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  watchButton: {
+    ...tvStyles.watchButton,
+  },
+  watchButtonFocused: {
+    ...tvStyles.watchButtonFocused,
+  },
+  watchButtonText: {
+    ...tvStyles.watchButtonText,
+  },
+  trailerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(21, 28, 48, 0.85)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 0, 0, 0.4)',
+  },
+  trailerButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+    marginLeft: 6,
+  },
+  ratingBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 4,
+    gap: 6,
+  },
+  ratingNumber: {
+    color: colors.primary,
+    fontWeight: '900',
+    fontSize: 15,
+  },
+  ratingDivider: {
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  ratingYear: {
+    color: '#CBD5E1',
+    fontWeight: '700',
+    fontSize: 14,
   },
   detailsHeroInfo: {
     maxWidth: '85%',

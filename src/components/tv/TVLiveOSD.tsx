@@ -70,7 +70,7 @@ export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
 
             <View style={styles.topActions}>
               <OSDActionButton
-                icon="contract"
+                icon="arrow-back"
                 label="Tela Cheia (Voltar)"
                 onPress={onCloseDrawer}
               />
@@ -270,9 +270,16 @@ export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
             {/* Botões rápidos D-Pad */}
             <View style={styles.zappingActions}>
               <OSDActionButton
+                icon="chevron-up"
+                label="Anterior (▲)"
+                variant="zapping"
+                onPress={onPreviousChannel}
+              />
+              <OSDActionButton
                 icon="list"
                 label="Guia (OK)"
                 variant="zapping"
+                hasPreferredFocus={true}
                 onPress={onOpenDrawer}
               />
               <OSDActionButton
@@ -281,6 +288,12 @@ export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
                 label="Favorito"
                 variant="zapping"
                 onPress={() => onToggleFavorite(activeChannel)}
+              />
+              <OSDActionButton
+                icon="chevron-down"
+                label="Próximo (▼)"
+                variant="zapping"
+                onPress={onNextChannel}
               />
             </View>
           </View>
@@ -417,17 +430,20 @@ function OSDActionButton({
   iconColor = '#FFF',
   label,
   variant = 'default',
+  hasPreferredFocus = false,
 }: {
   onPress?: () => void;
   icon: keyof typeof Ionicons.glyphMap;
   iconColor?: string;
   label: string;
   variant?: 'default' | 'accent' | 'zapping';
+  hasPreferredFocus?: boolean;
 }) {
   const [isFocused, setIsFocused] = useState(false);
   return (
     <Pressable
       focusable={true}
+      hasTVPreferredFocus={hasPreferredFocus}
       onFocus={() => setIsFocused(true)}
       onBlur={() => setIsFocused(false)}
       onPress={onPress}
@@ -440,15 +456,20 @@ function OSDActionButton({
         isFocused && styles.focusedButton,
       ]}
     >
-      <Ionicons name={icon} size={16} color={iconColor} />
+      <Ionicons
+        name={icon}
+        size={16}
+        color={isFocused ? '#000000' : iconColor}
+      />
       <Text
-        style={
+        style={[
           variant === 'accent'
             ? styles.exitBtnText
             : variant === 'zapping'
             ? styles.quickActionText
-            : styles.closeDrawerBtnText
-        }
+            : styles.closeDrawerBtnText,
+          isFocused && { color: '#000000', fontWeight: '900' },
+        ]}
       >
         {label}
       </Text>
@@ -656,15 +677,22 @@ const styles = StyleSheet.create({
   // Focus states
   focusedItem: {
     borderColor: colors.focusRing,
-    backgroundColor: 'rgba(255, 160, 0, 0.28)',
+    backgroundColor: 'rgba(0, 229, 255, 0.22)',
   },
   focusedItemText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
   },
   focusedButton: {
-    borderColor: colors.focusRing,
-    backgroundColor: colors.focusRing,
+    borderColor: '#FFFFFF',
+    backgroundColor: colors.primary, // #00E5FF (Cores do sistema Axi)
+    borderWidth: 2,
+    transform: [{ scale: 1.08 }],
+    elevation: 10,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.9,
+    shadowRadius: 8,
   },
 
   // Details Column

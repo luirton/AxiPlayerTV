@@ -283,3 +283,106 @@ axi-player-tv/
   * **Gerenciador de Recarregamento de Lista (3 a 5 dias):**
     * Opções de intervalo configuráveis no menu de Ajustes (`settings.tsx`), exibição do tempo da última sincronização e botão para forçar atualização imediata.
   * Compilação TypeScript validada com **0 erros** (`tsc --noEmit`).
+
+### Sessão: 18 de Novembro de 2026
+* **Refatoração Completa com Base no Feedback Real na TCL TV (9 Imagens):**
+  * **Imagem 1 (Navegação de Canais ao Vivo):**
+    * Implementada ponte vertical de navegação D-Pad em tela cheia (`dpadTargetHidden` superior/inferior + `centerFocusRef`).
+    * Teclas direcionais ▲ (Cima) e ▼ (Baixo) efetuam zapping sequencial imediato de canais com abertura do banner OSD.
+    * Inclusão dos botões focáveis no banner OSD: `[ Anterior (▲) ]`, `[ Guia (OK) ]`, `[ ⭐ Favorito ]` e `[ Próximo (▼) ]`.
+  * **Imagem 2 & 9 (Novo Player de Vídeo VOD Padrão Imagem 9):**
+    * Remoção da captura de foco do container raiz que bloqueava a navegação do D-Pad para os controles inferiores.
+    * Layout 100% fiel à Imagem 9:
+      * Barra superior com botão Voltar `←`, título centralizado e grupo de 5 ícones: Informações `(i)`, Favorito `♡`, Legendas `[CC]`, Áudio `🎵` e Proporção/Tela Cheia `⛶`.
+      * Slider vertical de Brilho com ícone de Sol na lateral esquerda.
+      * Slider vertical de Volume com ícone de Alto-Falante na lateral direita.
+      * Controles centrais circulares: `-10s` (sentido anti-horário), botão gigante central de Play/Pause (foco preferencial) e `+10s` (sentido horário).
+      * Barra inferior com tempo decorrido, linha de progresso azul e thumb circular azul (scrubber) e tempo total.
+  * **Imagem 3 (Redesign da Home Screen):**
+    * Destaque (Spotlight) redesenhado em layout lado a lado: pôster menor com badge "DESTAQUE" à esquerda e título, badges 4K/nota/ano, sinopse e botões de ação à direita.
+    * Substituição da lista de streaming por carrossel de **Categorias** reais carregadas dinamicamente via Xtream Codes.
+    * Ao clicar em qualquer filme ou no banner de destaque, agora abre a tela de descrição/detalhes em vez de ir direto para o player.
+  * **Imagens 4, 7 e 8 (Tela de Detalhes Cinematográfica com Versões Alternativas):**
+    * Criação do componente isolado e reutilizável `TVMovieDetailsModal.tsx` fiel à Imagem 8:
+      * Cabeçalho com botão `[ ← Voltar ]`.
+      * Título em caixa alta, sinopse, chips de gênero e botões de ação: `[ ▶ Assistir ]` (Amarelo vibrante), `[ 🕒 Assistir Depois ]`, `[ 📺 Trailer ]` e avaliação `★ | Ano`.
+      * Container inferior com abas: `[ Elenco ]`, `[ Sinopse ]` e `[ Versões (X) ]`.
+      * Aba **Versões**: busca automática de versões adicionais do mesmo filme em outras categorias da lista IPTV (ex: Pedidos, Lançamentos, 4K), com badge `VOCÊ ESTÁ AQUI` na versão atual e aviso orientador: *"O mesmo título em outras versões da sua lista. Se uma não abrir, tente outra."* (solucionando o travamento da Imagem 7).
+  * **Imagens 5 e 6 (Correção de Foco e Indicador Visual de Seleção):**
+    * Criação do componente `FocusablePill.tsx` com controle de estado `isFocused` individual.
+    * Destaque de alto contraste para Android TV: borda dourada/amarela (`#FFD700`, 3px), escala ampliada (`scale: 1.08`), elevação e cores ativas contrastantes para categorias e botões de ordenação (`Padrão`, `A-Z`, `Z-A`) em Filmes e Séries.
+  * **Limpeza de Código Morto:**
+    * Removidos arquivos obsoletos não utilizados: `StreamingBrands.tsx`, `FocusableItem.tsx` e `FloatingTabBar.tsx`, além de pastas vazias.
+  * Compilação TypeScript validada com **0 erros** (`npx tsc --noEmit`).
+
+* **Ajustes da Segunda Rodada de Feedback (Imagens 1 a 5):**
+  * **Imagem 1 (TV Ao Vivo - Remoção de Hotspot & Voltar Abre Guia):**
+    * Removido o `hotspotBar` (retângulo superior direito com setas de toque e botão lista).
+    * Tecla Voltar (`hardwareBackPress`) durante o vídeo em tela cheia agora abre imediatamente a gaveta completa de canais (`isDrawerOpen: true`).
+  * **Imagem 2 (TV Ao Vivo - Clique Direto & Voltar para Home):**
+    * Ao clicar em qualquer canal na lista do guia, sintoniza e fecha imediatamente a gaveta para tela cheia (`setIsDrawerOpen(false)`).
+    * Tecla Voltar quando o guia de canais estiver aberto redireciona para a Home (`/(tv)/home`).
+  * **Imagem 3 (Layout da Tela de Séries):**
+    * Redesenhada a tela de detalhes de séries no layout lado a lado com pôster e badge `DESTAQUE` à esquerda, e à direita: badges 4K UHD, nota IMDb, ano, sinopse, tags de gênero, botão `[ ▶ Assistir T1:E1 ]`, ações e trailer.
+    * Aba `TEMPORADAS & EPISÓDIOS` com `FocusablePill` amarelo nas temporadas e cards horizontais de episódios.
+  * **Imagem 4 (Layout de Detalhes de Filmes & Versões Alternativas):**
+    * Redesenhado o modal de filmes (`TVMovieDetailsModal.tsx`) em layout lado a lado com botão `[ ▶ Assistir ]` amarelo de alto contraste e aba `Versões (X)` abaixo com pesquisa cruzada no catálogo.
+  * **Imagem 5 (Remoção do Preview Compacto no Topo do Catálogo):**
+    * Removido o bloco de preview compacto (`compactPreviewContainer`) tanto do catálogo de Filmes (`movies.tsx`) quanto de Séries (`series.tsx`), deixando o grid de títulos limpo e direto.
+  * **Padronização Visual do Botão Voltar:**
+    * Criado o componente `TVBackButton.tsx` padronizando todos os botões de retorno do app com a seta `arrow-back` e destaque amarelo `#FFD700`.
+  * **Sistema de Estilo e Cores Unificado (tvTheme.ts):**
+    * Criado o arquivo central de design system `src/theme/tvTheme.ts` e exportado através de `src/theme/index.ts` e `colors.ts`.
+    * **Aplicação Rigorosa das Cores Oficiais do Sistema (Axi Neon Cyan & Purple):**
+      * Eliminados os tons isolados de amarelo e laranja em botões de ação e pílulas.
+      * **Botões Assistir:** Tanto em Filmes quanto em Séries e Home, utilizam a cor oficial do sistema **Axi Neon Cyan (`#00E5FF`)** com texto de alto contraste Dark OLED (`#070A12`) e anel de foco branco/cyan com escala de elevação `1.08`.
+      * **Seletor de Temporadas (`FocusablePill`):** Segue as cores oficiais do sistema em Cyan `#00E5FF` quando ativo/selecionado com texto `#070A12` e fundo Dark Navy `#151C30` quando inativo.
+      * **Botões de Ordenação ("Padrão", "A-Z", "Z-A"):** Removido o tom laranja e padronizado com o Neon Cyan `#00E5FF` do sistema.
+      * **Botão "Guia (OK)" no OSD de TV ao Vivo:** Ajustado para o Neon Cyan `#00E5FF` oficial do sistema.
+      * **Badges de Destaque:** Padronizados com o Roxo Neon Axi (`#A855F7`).
+      * Estrelas de avaliação (`⭐`) mantêm dourado apenas para o ícone de nota IMDb/TMDB.
+  * Compilação TypeScript validada com **0 erros** (`npx tsc --noEmit`).
+
+* **Ajustes da Terceira Rodada de Feedback (Continuar Assistindo, Scrubber Draggable & Fallback de Versão):**
+  * **Botão "Continuar Assistindo" em Branco Exclusivo no Modal de Saída do Player:**
+    * **Modal de Saída do Player (`app/player/[id].tsx`):** O botão "Continuar Assistindo" destacado no diálogo de confirmação de saída foi mantido com fundo branco sólido (`#FFFFFF`) e texto em preto negrito (`#000000`) para alto contraste na TV.
+    * **Botões "Assistir" nas Telas (Filmes, Séries e Home):** Todos os botões primários de reprodução ("Assistir", "Assistir T1:E1" e "ASSISTIR AGORA") retornaram à sua cor **azulada oficial do sistema (Axi Neon Cyan `#00E5FF`)** com texto escuro e ícone escuro `#070A12`.
+  * **Sistema Centralizado de Design e Classes de Estilo (`src/theme/tvTheme.ts`):**
+    * Criado o Design System oficial em `src/theme/tvTheme.ts` contendo:
+      * `tvColors`: Paleta de cores oficial (Dark OLED `#070A12`, Neon Cyan `#00E5FF`, Neon Purple `#A855F7`, textos, bordas e badges).
+      * `tvStyles`: Classes centrais reutilizáveis como `watchButton` (botão azulado oficial), `watchButtonFocused`, `watchButtonText`, `dialogBtnContinueWhite`, `actionIconBtn`, `trailerButton`, `badge4K` e `badgeDestaque`.
+      * `tvTypography`, `tvSpacing` e `tvRadius`.
+    * Integrado diretamente nos componentes e telas: `TVMovieDetailsModal.tsx`, `app/(tv)/series.tsx`, `app/(tv)/home.tsx`, `TVBackButton.tsx` e `FocusablePill.tsx`.
+  * **Avançar o Filme Arrastando o Progresso (Scrubber Draggable via PanResponder):**
+    * Implementado controle interativo de seek na timeline do player VOD (`app/player/[id].tsx`) usando `PanResponder`.
+    * Suporta arrasto touch/mouse/pointer com cálculo em tempo real de `(touchX / width) * duration`.
+    * Feedback visual instantâneo durante o arrasto: atualização da barra de progresso, posição do thumb e tooltip flutuante estilizado exibindo o tempo alvo (`[ hh:mm:ss ]`). Ao soltar (release), o player salta imediatamente para o tempo selecionado via `player.seekBy` / `player.currentTime`.
+  * **Detecção Automática de Falha de Carregamento & Sugestão de Próxima Versão:**
+    * Criado o serviço `src/services/iptvVersions.ts` para normalização de títulos e busca cruzada de filmes com nomes semelhantes em todas as categorias da lista IPTV.
+    * No player (`app/player/[id].tsx`), implementado monitoramento de status com watchdog timer (15s de buffering/erro). Caso o stream falhe:
+      * Dispara busca automática por versões alternativas do mesmo filme.
+      * Se houver outra versão disponível: exibe modal informando o problema e sugerindo a próxima versão com botão `[ ▶ Tentar Próxima Versão ]` em branco de 1-clique.
+      * Se não houver outra versão: exibe modal informativo "Conteúdo Indisponível" com opção de retornar ao catálogo.
+  * Compilação TypeScript validada com **0 erros** (`npx tsc --noEmit`).
+
+* **Limpeza Geral de Código Morto e Otimização Arquitetural:**
+  * **Serviços Obsoletos Removidos:**
+    * `src/services/parentalControl.ts`: Utilitário não integrado ao fluxo de TV.
+    * `src/services/permissions.ts`: Módulo de permissões de armazenamento do app mobile, desnecessário na TV.
+    * `src/services/uiState.ts`: Singleton legado de orientação/fullscreen para mobile.
+  * **Otimização de Catálogo (Filmes & Séries):**
+    * Removidos imports não utilizados (`Modal`, `Dimensions`, `LinearGradient`, `FocusableButton`, `EnrichedPosterImage` em `movies.tsx`).
+    * Removidos estados e timers desnecessários de preview que disparavam chamadas de rede no evento `onFocus` (`previewMeta`, `debounceTimerRef`).
+    * Eliminadas mais de 280 linhas de regras de estilos legados não utilizados (`compactPreviewContainer`, `previewMetaRow`, `detailsScreenContainer`, `primaryWatchButton`, etc.).
+  * **Resumo Arquitetural das Telas:**
+    1. **`app/index.tsx` (Splash Screen):** Inicialização widescreen 16:9, validação de perfil ativo e redirecionamento automático com autoria oficial.
+    2. **`app/login.tsx` (Login Split-Screen 16:9):** Conexão por Link IPTV (M3U/HLS/Encurtador) ou Servidor/Usuário/Senha Xtream Codes, com gerenciamento multi-contas.
+    3. **`app/(tv)/_layout.tsx` (Shell com Sidebar Retrátil):** Sidebar retrátil de alta ergonomia D-Pad com atalhos para Busca, Home, Ao Vivo, Filmes, Séries e Ajustes.
+    4. **`app/(tv)/home.tsx` (Dashboard TV):** Spotlight de destaque cinematográfico, carrossel de categorias reais, canais favoritos, histórico "Continuar Assistindo" com barra de progresso e lançamentos.
+    5. **`app/(tv)/live.tsx` (TV Ao Vivo com OSD Split):** Reprodução contínua em tela cheia ao fundo, zapping vertical direto via D-Pad (▲/▼), gaveta split de categorias/canais e botão Voltar contextual.
+    6. **`app/(tv)/movies.tsx` (Catálogo de Filmes Grid):** Barra superior de categorias com filtros de ordenação e grid focável de alta performance que abre o modal de detalhes.
+    7. **`app/(tv)/series.tsx` (Catálogo de Séries com Temporadas):** Grid de séries, modal de detalhes completo lado a lado com seletor de temporadas e cards horizontais de episódios.
+    8. **`app/(tv)/search.tsx` (Busca Global com Teclado TV):** Teclado virtual na tela adaptado para D-Pad com busca simultânea em canais ao vivo e catálogo VOD.
+    9. **`app/(tv)/settings.tsx` (Ajustes & Gerenciador de Lista):** Dados da conta, sincronização programada da lista (3 a 5 dias), recarregamento forçado e limpeza de cache.
+    10. **`app/player/[id].tsx` (Player Widescreen Imersivo):** ExoPlayer nativo com timeline interativa, avanço arrastável (draggable scrubber com tooltip de tempo flutuante), controles de volume/brilho, detecção de falha de carregamento com fallback automático para versão alternativa e modal de saída com botão branco de alto contraste.
+  * Compilação TypeScript validada com **0 erros** (`npx tsc --noEmit`).

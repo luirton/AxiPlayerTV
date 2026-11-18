@@ -5,7 +5,6 @@ import {
   ScrollView,
   StyleSheet,
   ActivityIndicator,
-  Modal,
   Pressable,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -14,12 +13,20 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { TVHeader } from '../../src/components/tv/TVHeader';
 import { FocusableCard } from '../../src/components/tv/FocusableCard';
-import { FocusableButton } from '../../src/components/tv/FocusableButton';
-import { StreamingBrandsRow, StreamingBrand } from '../../src/components/home/StreamingBrands';
+import { FocusablePill } from '../../src/components/tv/FocusablePill';
+import { TVMovieDetailsModal } from '../../src/components/tv/TVMovieDetailsModal';
 import { xtreamClient } from '../../src/services/xtreamClient';
 import { storage, WatchProgressItem, MediaListItem } from '../../src/services/storage';
 import { colors } from '../../src/theme/colors';
-import { LiveStream, VodStream, SeriesStream, LiveChannel } from '../../src/types/iptv';
+import { tvColors, tvStyles } from '../../src/theme/tvTheme';
+import { LiveStream, VodStream, SeriesStream, LiveChannel, Category } from '../../src/types/iptv';
+
+interface FeaturedCategoryItem {
+  id: string;
+  name: string;
+  type: 'movie' | 'series' | 'live';
+  icon: keyof typeof Ionicons.glyphMap;
+}
 
 export default function TVHomeScreen() {
   const router = useRouter();
@@ -27,16 +34,21 @@ export default function TVHomeScreen() {
   const [liveChannels, setLiveChannels] = useState<LiveStream[]>([]);
   const [movies, setMovies] = useState<VodStream[]>([]);
   const [series, setSeries] = useState<SeriesStream[]>([]);
-  const [heroItem, setHeroItem] = useState<any>(null);
+  const [heroItem, setHeroItem] = useState<VodStream | null>(null);
 
   // Collections state
   const [favoriteChannels, setFavoriteChannels] = useState<LiveChannel[]>([]);
   const [continueWatching, setContinueWatching] = useState<WatchProgressItem[]>([]);
   const [watchLaterList, setWatchLaterList] = useState<MediaListItem[]>([]);
+  const [availableCategories, setAvailableCategories] = useState<Category[]>([]);
+  const [featuredCategories, setFeaturedCategories] = useState<FeaturedCategoryItem[]>([]);
 
-  // Brand Modal State
-  const [selectedBrand, setSelectedBrand] = useState<StreamingBrand | null>(null);
-  const [brandModalVisible, setBrandModalVisible] = useState(false);
+  // Movie Details Modal State (Imagem 8 Standard)
+  const [selectedMovieForDetails, setSelectedMovieForDetails] = useState<VodStream | null>(null);
+
+  // Focus states
+  const [isHeroWatchFocused, setIsHeroWatchFocused] = useState(false);
+  const [isHeroDetailsFocused, setIsHeroDetailsFocused] = useState(false);
 
   useEffect(() => {
     loadHomeData();
@@ -83,15 +95,37 @@ export default function TVHomeScreen() {
         xtreamClient.getSeriesCategories().catch(() => []),
       ]);
 
-      const firstVodCatId =
-        vodCatsRes && Array.isArray(vodCatsRes) && vodCatsRes.length > 0
-          ? vodCatsRes[0].category_id
-          : undefined;
+      const allVodCats: Category[] = Array.isArray(vodCatsRes) ? vodCatsRes : [];
+      const allSeriesCats: Category[] = Array.isArray(seriesCatsRes) ? seriesCatsRes : [];
+      setAvailableCategories(allVodCats);
 
-      const firstSeriesCatId =
-        seriesCatsRes && Array.isArray(seriesCatsRes) && seriesCatsRes.length > 0
-          ? seriesCatsRes[0].category_id
-          : undefined;
+      // Build Featured Categories list to replace the streaming brands (Imagem 3)
+      const featCats: FeaturedCategoryItem[] = [];
+
+      // Top VOD Categories
+      allVodCats.slice(0, 6).forEach((c) => {
+        featCats.push({
+          id: c.category_id,
+          name: c.category_name,
+          type: 'movie',
+          icon: 'film-outline',
+        });
+      });
+
+      // Top Series Categories
+      allSeriesCats.slice(0, 4).forEach((c) => {
+        featCats.push({
+          id: c.category_id,
+          name: c.category_name,
+          type: 'series',
+          icon: 'tv-outline',
+        });
+      });
+
+      setFeaturedCategories(featCats);
+
+      const firstVodCatId = allVodCats.length > 0 ? allVodCats[0].category_id : undefined;
+      const firstSeriesCatId = allSeriesCats.length > 0 ? allSeriesCats[0].category_id : undefined;
 
       const [vodRes, seriesRes] = await Promise.all([
         firstVodCatId
@@ -113,27 +147,11 @@ export default function TVHomeScreen() {
       // Sincroniza marcação de recarga de lista da TV
       storage.markPlaylistReloaded().catch(() => {});
 
-      // Spotlight Hero item com metadados enriquecidos
+      // Spotlight Hero item
       if (topMovies.length > 0) {
         const poolSize = Math.min(topMovies.length, 10);
         const randomIdx = Math.floor(Math.random() * poolSize);
-        const hero = topMovies[randomIdx] || topMovies[0];
-
-        setHeroItem({
-          title: hero.name,
-          rating: hero.rating_5based ? (Number(hero.rating_5based) * 2).toFixed(1) : '8.5',
-          backdrop: hero.stream_icon,
-          id: hero.stream_id,
-          type: 'movie',
-        });
-      } else if (topLive.length > 0) {
-        setHeroItem({
-          title: topLive[0].name,
-          rating: 'Ao Vivo',
-          backdrop: topLive[0].stream_icon,
-          id: topLive[0].stream_id,
-          type: 'live',
-        });
+        setHeroItem(topMovies[randomIdx] || topMovies[0]);
       }
 
       await loadCollections();
@@ -151,25 +169,37 @@ export default function TVHomeScreen() {
     });
   };
 
-  const handleSelectBrand = (brand: StreamingBrand) => {
-    setSelectedBrand(brand);
-    setBrandModalVisible(true);
+  const handleMoviePress = (movie: VodStream) => {
+    setSelectedMovieForDetails(movie);
   };
 
-  const navigateToBrandContent = (type: 'movies' | 'series') => {
-    if (!selectedBrand) return;
-    setBrandModalVisible(false);
+  const handlePlayFromDetails = (movie: VodStream, containerExt?: string) => {
+    setSelectedMovieForDetails(null);
+    router.push({
+      pathname: '/player/[id]',
+      params: {
+        id: String(movie.stream_id),
+        type: 'movie',
+        name: movie.name,
+        container: containerExt || movie.container_extension || 'mp4',
+        icon: movie.stream_icon || '',
+      },
+    });
+  };
 
-    if (type === 'movies') {
+  const handleCategoryPress = (cat: FeaturedCategoryItem) => {
+    if (cat.type === 'movie') {
       router.push({
         pathname: '/(tv)/movies',
-        params: { search: selectedBrand.name },
+        params: { categoryId: cat.id },
       });
-    } else {
+    } else if (cat.type === 'series') {
       router.push({
         pathname: '/(tv)/series',
-        params: { search: selectedBrand.name },
+        params: { categoryId: cat.id },
       });
+    } else {
+      router.push('/(tv)/live');
     }
   };
 
@@ -182,6 +212,10 @@ export default function TVHomeScreen() {
     );
   }
 
+  const heroRating = heroItem?.rating_5based
+    ? (Number(heroItem.rating_5based) * 2).toFixed(1)
+    : '8.4';
+
   return (
     <View style={styles.container}>
       <TVHeader title="Axi Player TV" subtitle="Início & Lançamentos" />
@@ -191,52 +225,117 @@ export default function TVHomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Spotlight Hero Banner (16:9 Cinema Aspect) */}
+        {/* Spotlight Hero Banner (Imagem 3: Novo Layout com Pôster Menor e Descrição ao Lado) */}
         {heroItem && (
-          <View style={styles.heroContainer}>
-            {heroItem.backdrop ? (
+          <View style={styles.heroBox}>
+            {/* Background Backdrop Blur/Gradient */}
+            {heroItem.stream_icon ? (
               <Image
-                source={{ uri: heroItem.backdrop }}
+                source={{ uri: heroItem.stream_icon }}
                 style={StyleSheet.absoluteFill}
                 contentFit="cover"
               />
             ) : null}
             <LinearGradient
-              colors={['transparent', 'rgba(7, 10, 18, 0.85)', '#070A12']}
-              style={StyleSheet.absoluteFill}
-            />
-            <LinearGradient
-              colors={['rgba(7, 10, 18, 0.95)', 'rgba(7, 10, 18, 0.5)', 'transparent']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
+              colors={['rgba(7, 10, 18, 0.88)', 'rgba(7, 10, 18, 0.98)', '#070A12']}
               style={StyleSheet.absoluteFill}
             />
 
-            <View style={styles.heroDetails}>
-              <View style={styles.heroBadgeRow}>
-                <View style={styles.badgeHD}>
-                  <Text style={styles.badgeHDText}>4K UHD</Text>
+            <View style={styles.heroInnerRow}>
+              {/* Imagem Menor do Pôster à Esquerda */}
+              <View style={styles.heroPosterWrapper}>
+                {heroItem.stream_icon ? (
+                  <Image
+                    source={{ uri: heroItem.stream_icon }}
+                    style={styles.heroPosterImg}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View style={styles.heroPosterPlaceholder}>
+                    <Ionicons name="film" size={40} color="#666" />
+                  </View>
+                )}
+                <View style={styles.heroPosterBadge}>
+                  <Text style={styles.heroPosterBadgeText}>DESTAQUE</Text>
                 </View>
-                <Text style={styles.heroRating}>⭐ {heroItem.rating}</Text>
-                <Text style={styles.heroYear}>2025</Text>
               </View>
 
-              <Text style={styles.heroTitle} numberOfLines={2}>
-                {heroItem.title}
-              </Text>
-              <Text style={styles.heroSynopsis} numberOfLines={2}>
-                Assista em altíssima definição sem travamentos, com áudio multicanal e suporte a legendas sincronizadas.
-              </Text>
+              {/* Informações e Descrição ao Lado (Direita) */}
+              <View style={styles.heroContentCol}>
+                <View style={styles.heroBadgeRow}>
+                  <View style={styles.badgeHD}>
+                    <Text style={styles.badgeHDText}>4K UHD</Text>
+                  </View>
+                  <Text style={styles.heroRating}>⭐ {heroRating}</Text>
+                  <Text style={styles.heroDot}>•</Text>
+                  <Text style={styles.heroYear}>2025</Text>
+                </View>
 
-              <View style={styles.heroActions}>
-                <FocusableButton
-                  label="ASSISTIR AGORA"
-                  icon="play"
-                  onPress={() => handleOpenPlayer(heroItem.id, heroItem.type, heroItem.title)}
-                  hasTVPreferredFocus={true}
-                />
+                <Text style={styles.heroTitle} numberOfLines={2}>
+                  {heroItem.name}
+                </Text>
+
+                <Text style={styles.heroSynopsis} numberOfLines={3}>
+                  Assista a esta superprodução em altíssima fidelidade de vídeo e áudio multicanal. Reprodução instantânea e sem travamentos.
+                </Text>
+
+                <View style={styles.heroActionsRow}>
+                  <Pressable
+                    focusable={true}
+                    hasTVPreferredFocus={true}
+                    onFocus={() => setIsHeroWatchFocused(true)}
+                    onBlur={() => setIsHeroWatchFocused(false)}
+                    onPress={() => setSelectedMovieForDetails(heroItem)}
+                    style={[
+                      styles.heroWatchBtn,
+                      isHeroWatchFocused && styles.heroWatchBtnFocused,
+                    ]}
+                  >
+                    <Ionicons name="play" size={20} color="#070A12" />
+                    <Text style={styles.heroWatchBtnText}>ASSISTIR AGORA</Text>
+                  </Pressable>
+
+                  <Pressable
+                    focusable={true}
+                    onFocus={() => setIsHeroDetailsFocused(true)}
+                    onBlur={() => setIsHeroDetailsFocused(false)}
+                    onPress={() => setSelectedMovieForDetails(heroItem)}
+                    style={[
+                      styles.heroDetailsBtn,
+                      isHeroDetailsFocused && styles.heroDetailsBtnFocused,
+                    ]}
+                  >
+                    <Ionicons name="information-circle-outline" size={20} color="#FFFFFF" />
+                    <Text style={styles.heroDetailsBtnText}>Detalhes</Text>
+                  </Pressable>
+                </View>
               </View>
             </View>
+          </View>
+        )}
+
+        {/* Row: Categorias em Destaque (Imagem 3: Substituição da lista de streaming por categorias) */}
+        {featuredCategories.length > 0 && (
+          <View style={styles.sectionRow}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="grid-outline" size={18} color={colors.primary} style={{ marginRight: 6 }} />
+              <Text style={styles.sectionTitle}>Categorias</Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoryCarousel}
+            >
+              {featuredCategories.map((cat) => (
+                <FocusablePill
+                  key={`${cat.type}-${cat.id}`}
+                  label={cat.name}
+                  icon={cat.icon}
+                  onPress={() => handleCategoryPress(cat)}
+                  style={styles.categoryPill}
+                />
+              ))}
+            </ScrollView>
           </View>
         )}
 
@@ -275,7 +374,19 @@ export default function TVHomeScreen() {
                       badge={item.type === 'movie' ? 'Filme' : item.type === 'series' ? 'Série' : 'Ao Vivo'}
                       width={140}
                       aspectRatio={2 / 3}
-                      onPress={() => handleOpenPlayer(item.id, item.type, item.title)}
+                      onPress={() => {
+                        if (item.type === 'movie') {
+                          handleMoviePress({
+                            stream_id: Number(item.id),
+                            name: item.title,
+                            stream_icon: item.poster,
+                            category_id: '',
+                            container_extension: item.extension || 'mp4',
+                          } as any);
+                        } else {
+                          handleOpenPlayer(item.id, item.type, item.title);
+                        }
+                      }}
                     />
                     {progressPct > 0 && (
                       <View style={styles.progressBarBg}>
@@ -303,20 +414,72 @@ export default function TVHomeScreen() {
                   rating={item.rating}
                   width={140}
                   aspectRatio={2 / 3}
-                  onPress={() => handleOpenPlayer(item.id, item.type, item.title)}
+                  onPress={() => {
+                    if (item.type === 'movie') {
+                      handleMoviePress({
+                        stream_id: Number(item.id),
+                        name: item.title,
+                        stream_icon: item.poster || item.backdrop,
+                        category_id: item.category_id || '',
+                        container_extension: item.extension || 'mp4',
+                      } as any);
+                    } else {
+                      handleOpenPlayer(item.id, item.type, item.title);
+                    }
+                  }}
                 />
               ))}
             </ScrollView>
           </View>
         )}
 
-        {/* Row: Marcas de Streaming */}
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>⚡ Plataformas de Streaming</Text>
-          <StreamingBrandsRow onSelectBrand={handleSelectBrand} />
-        </View>
+        {/* Row: Filmes Recentes (Imagem 3: abre tela de descrição/detalhes) */}
+        {movies.length > 0 && (
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionTitle}>🎬 Filmes em Lançamento</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carousel}>
+              {movies.map((movie) => (
+                <FocusableCard
+                  key={movie.stream_id}
+                  title={movie.name}
+                  imageUrl={movie.stream_icon}
+                  rating={movie.rating_5based ? (Number(movie.rating_5based) * 2).toFixed(1) : undefined}
+                  width={140}
+                  aspectRatio={2 / 3}
+                  onPress={() => handleMoviePress(movie)}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
-        {/* Row 1: TV Ao Vivo em Destaque */}
+        {/* Row: Séries Populares */}
+        {series.length > 0 && (
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionTitle}>🍿 Séries em Destaque</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carousel}>
+              {series.map((s) => (
+                <FocusableCard
+                  key={s.series_id}
+                  title={s.name}
+                  imageUrl={s.cover}
+                  rating={s.rating_5based ? (Number(s.rating_5based) * 2).toFixed(1) : undefined}
+                  width={140}
+                  aspectRatio={2 / 3}
+                  type="series"
+                  onPress={() => {
+                    router.push({
+                      pathname: '/(tv)/series',
+                      params: { search: s.name },
+                    });
+                  }}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Row: TV Ao Vivo em Destaque */}
         {liveChannels.length > 0 && (
           <View style={styles.sectionRow}>
             <Text style={styles.sectionTitle}>📺 Canais Ao Vivo</Text>
@@ -335,85 +498,17 @@ export default function TVHomeScreen() {
             </ScrollView>
           </View>
         )}
-
-        {/* Row 2: Filmes Recentes */}
-        {movies.length > 0 && (
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionTitle}>🎬 Filmes em Lançamento</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carousel}>
-              {movies.map((movie) => (
-                <FocusableCard
-                  key={movie.stream_id}
-                  title={movie.name}
-                  imageUrl={movie.stream_icon}
-                  rating={movie.rating_5based ? (Number(movie.rating_5based) * 2).toFixed(1) : undefined}
-                  width={140}
-                  aspectRatio={2 / 3}
-                  onPress={() => handleOpenPlayer(movie.stream_id, 'movie', movie.name)}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Row 3: Séries Populares */}
-        {series.length > 0 && (
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionTitle}>🍿 Séries em Destaque</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carousel}>
-              {series.map((s) => (
-                <FocusableCard
-                  key={s.series_id}
-                  title={s.name}
-                  imageUrl={s.cover}
-                  rating={s.rating_5based ? (Number(s.rating_5based) * 2).toFixed(1) : undefined}
-                  width={140}
-                  aspectRatio={2 / 3}
-                  onPress={() => router.push({ pathname: '/(tv)/series', params: { seriesId: String(s.series_id) } })}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        )}
       </ScrollView>
 
-      {/* Brand Selection Modal */}
-      <Modal
-        visible={brandModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setBrandModalVisible(false)}
-      >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setBrandModalVisible(false)}
-        >
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              Explorar {selectedBrand?.name}
-            </Text>
-            <Text style={styles.modalSubtitle}>
-              O que você deseja assistir desta plataforma?
-            </Text>
-
-            <View style={styles.modalActions}>
-              <FocusableButton
-                label="🎬 Filmes"
-                icon="film-outline"
-                onPress={() => navigateToBrandContent('movies')}
-                style={styles.modalButton}
-                hasTVPreferredFocus={true}
-              />
-              <FocusableButton
-                label="🍿 Séries"
-                icon="albums-outline"
-                onPress={() => navigateToBrandContent('series')}
-                style={styles.modalButton}
-              />
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
+      {/* Reusable Cinematic Movie Details Modal (Imagem 8 Standard) */}
+      <TVMovieDetailsModal
+        visible={!!selectedMovieForDetails}
+        movie={selectedMovieForDetails}
+        currentCategoryName="Filmes"
+        availableCategories={availableCategories}
+        onClose={() => setSelectedMovieForDetails(null)}
+        onPlayMovie={handlePlayFromDetails}
+      />
     </View>
   );
 }
@@ -430,7 +525,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    color: '#9AA4BC',
+    color: '#8E8E93',
     marginTop: 16,
     fontSize: 14,
   },
@@ -440,130 +535,191 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 40,
   },
-  heroContainer: {
-    height: 280,
+
+  /* Spotlight Hero: Novo Layout Lado a Lado (Imagem 3) */
+  heroBox: {
     marginHorizontal: 24,
+    marginTop: 14,
     marginBottom: 20,
     borderRadius: 14,
     overflow: 'hidden',
-    justifyContent: 'flex-end',
     backgroundColor: '#0E1322',
-    borderWidth: 1,
-    borderColor: '#1B2338',
+    borderWidth: 1.5,
+    borderColor: '#1E2845',
   },
-  heroDetails: {
-    padding: 24,
-    maxWidth: '65%',
+  heroInnerRow: {
+    flexDirection: 'row',
+    padding: 20,
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  heroPosterWrapper: {
+    width: 150,
+    height: 220,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#151C30',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    marginRight: 22,
+    position: 'relative',
+  },
+  heroPosterImg: {
+    width: '100%',
+    height: '100%',
+  },
+  heroPosterPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heroPosterBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: colors.secondary, // #A855F7 (Cores do sistema)
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  heroPosterBadgeText: {
+    color: '#FFFFFF',
+    fontWeight: '900',
+    fontSize: 9,
+  },
+  heroContentCol: {
+    flex: 1,
   },
   heroBadgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
     marginBottom: 8,
   },
   badgeHD: {
-    backgroundColor: colors.primary,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 4,
-    marginRight: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
   },
   badgeHDText: {
-    color: '#070A12',
+    color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: '900',
+    fontWeight: '800',
   },
   heroRating: {
-    color: '#FFD700',
-    fontSize: 12,
+    color: colors.primary,
+    fontSize: 13,
     fontWeight: 'bold',
-    marginRight: 10,
+  },
+  heroDot: {
+    color: '#64748B',
   },
   heroYear: {
-    color: '#9AA4BC',
+    color: '#CBD5E1',
     fontSize: 12,
+    fontWeight: '600',
   },
   heroTitle: {
     color: '#FFFFFF',
     fontSize: 26,
     fontWeight: '900',
-    marginBottom: 6,
+    letterSpacing: 0.5,
+    marginBottom: 8,
   },
   heroSynopsis: {
-    color: '#9AA4BC',
-    fontSize: 12,
+    color: '#94A3B8',
+    fontSize: 13,
     lineHeight: 18,
     marginBottom: 16,
+    maxWidth: '90%',
   },
-  heroActions: {
+  heroActionsRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
+  heroWatchBtn: {
+    ...tvStyles.watchButton,
+    paddingHorizontal: 20,
+  },
+  heroWatchBtnFocused: {
+    ...tvStyles.watchButtonFocused,
+    transform: [{ scale: 1.06 }],
+  },
+  heroWatchBtnText: {
+    ...tvStyles.watchButtonText,
+    fontSize: 13,
+  },
+  heroDetailsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(21, 28, 48, 0.85)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#1E2845',
+  },
+  heroDetailsBtnFocused: {
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(0, 229, 255, 0.20)',
+    transform: [{ scale: 1.06 }],
+  },
+  heroDetailsBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+    marginLeft: 6,
+  },
+
+  /* Sections */
   sectionRow: {
-    marginBottom: 24,
+    marginBottom: 20,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    marginBottom: 10,
   },
   sectionTitle: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 24,
-    marginBottom: 12,
+    fontSize: 17,
+    fontWeight: '800',
+    paddingHorizontal: 24,
+    marginBottom: 10,
+    letterSpacing: 0.3,
   },
   carousel: {
-    paddingLeft: 24,
-    paddingRight: 24,
+    paddingHorizontal: 24,
+    gap: 14,
+  },
+  categoryCarousel: {
+    paddingHorizontal: 24,
+    gap: 10,
+    paddingVertical: 4,
+  },
+  categoryPill: {
+    marginRight: 0,
   },
   continueCardWrapper: {
     position: 'relative',
-    marginRight: 14,
   },
   progressBarBg: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    bottom: 2,
+    left: 2,
+    right: 16,
     height: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     borderRadius: 2,
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
     backgroundColor: colors.primary,
-  },
-
-  /* Modal */
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    width: 440,
-    backgroundColor: '#0E1322',
-    borderWidth: 1.5,
-    borderColor: '#1B2338',
-    borderRadius: 16,
-    padding: 24,
-    alignItems: 'center',
-  },
-  modalTitle: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  modalSubtitle: {
-    color: '#9AA4BC',
-    fontSize: 13,
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 14,
-    width: '100%',
-  },
-  modalButton: {
-    flex: 1,
   },
 });
