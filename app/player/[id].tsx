@@ -16,7 +16,7 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { xtreamClient } from '../../src/services/xtreamClient';
-import { storage } from '../../src/services/storage';
+import { storage, WatchProgressItem } from '../../src/services/storage';
 import { colors } from '../../src/theme/colors';
 import { findAlternativeMovieVersions, AlternativeMovieVersion } from '../../src/services/iptvVersions';
 
@@ -28,12 +28,24 @@ export default function TVPlayerScreen() {
     name = 'Reprodução',
     container = 'mp4',
     icon = '',
+    streamUrl: initialStreamUrl,
+    startPosition,
+    seriesId,
+    seriesTitle,
+    seasonNum,
+    episodeNum,
   } = useLocalSearchParams<{
     id: string;
     type?: 'live' | 'movie' | 'series';
     name?: string;
     container?: string;
     icon?: string;
+    streamUrl?: string;
+    startPosition?: string;
+    seriesId?: string;
+    seriesTitle?: string;
+    seasonNum?: string;
+    episodeNum?: string;
   }>();
 
   const isVod = type === 'movie' || type === 'series';
@@ -96,14 +108,30 @@ export default function TVPlayerScreen() {
   const [isSearchingNextVersion, setIsSearchingNextVersion] = useState<boolean>(false);
   const playbackFailureTriggeredRef = useRef<boolean>(false);
   const loadTimeoutRef = useRef<any>(null);
-
   const hideTimerRef = useRef<any>(null);
   const progressSaveTimerRef = useRef<any>(null);
   const currentTimeRef = useRef<number>(0);
   const durationRef = useRef<number>(0);
+  const streamUrlRef = useRef<string | null>(null);
+  const currentContainerRef = useRef<string>(container || 'mp4');
+  const triedIdsRef = useRef<Set<string>>(new Set([String(id)]));
+  const targetPositionRef = useRef<number>(0);
+  const initialSeekDoneRef = useRef<boolean>(false);
 
   currentTimeRef.current = currentTime;
   durationRef.current = duration;
+  streamUrlRef.current = streamUrl;
+
+  // Inicia ou reinicia o temporizador de segurança (mínimo de 10 segundos conforme solicitado)
+  const startLoadingWatchdog = useCallback(() => {
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    loadTimeoutRef.current = setTimeout(() => {
+      if (currentTimeRef.current <= 0) {
+        console.log('[Player Watchdog] 10s sem início de reprodução. Acionando fallback para versão alternativa...');
+        handlePlaybackFailure();
+      }
+    }, 10000);
+  }, []);
 
   // 1. Resolve Stream URL and Restore Last Saved Progress
   useEffect(() => {
@@ -114,14 +142,49 @@ export default function TVPlayerScreen() {
         if (!profile) return;
         xtreamClient.setCredentials(profile.serverUrl, profile.username, profile.password);
 
-        const url = xtreamClient.getStreamUrl(
-          currentPlayingId,
-          type as 'live' | 'movie' | 'series',
-          container || 'mp4'
-        );
+        let url: string | null = null;
+        let savedProgress: WatchProgressItem | null = null;
 
-        if (isMounted) {
+        // Se for VOD, busca progresso salvo previamente pelo ID ou pelo título
+        if (isVod) {
+          savedProgress = await storage.getWatchProgress(currentPlayingId, name);
+          if (!savedProgress && seriesId) {
+            savedProgress = await storage.getWatchProgress(seriesId, seriesTitle || name);
+          }
+          // Prioriza SEMPRE o link/versão que já deu certo no histórico salvo!
+          if (savedProgress?.streamUrl) {
+            url = savedProgress.streamUrl;
+            if (savedProgress.extension) {
+              currentContainerRef.current = savedProgress.extension;
+            }
+            if (savedProgress.id && String(savedProgress.id) !== currentPlayingId) {
+              const workingId = String(savedProgress.id);
+              triedIdsRef.current.add(workingId);
+              setCurrentPlayingId(workingId);
+            }
+          }
+        }
+
+        // Se não tinha no histórico com streamUrl confirmada, usa initialStreamUrl se foi passado
+        if (!url && initialStreamUrl) {
+          url = initialStreamUrl;
+        }
+
+        // Se ainda não tiver url, gera do client
+        if (!url) {
+          url = xtreamClient.getStreamUrl(
+            currentPlayingId,
+            type as 'live' | 'movie' | 'series',
+            currentContainerRef.current || container || 'mp4'
+          );
+        }
+
+        if (isMounted && url) {
           setStreamUrl(url);
+          streamUrlRef.current = url;
+          setIsBuffering(true);
+          // Inicia a contagem de 10s a partir do momento em que a URL é definida
+          startLoadingWatchdog();
         }
 
         // Check if favorite
@@ -133,12 +196,19 @@ export default function TVPlayerScreen() {
           if (isMounted) setIsFavorite(favs.includes(Number(currentPlayingId)));
         }
 
-        // Restore saved progress for VOD
+        // Restore saved progress for VOD (usando startPosition se fornecido ou do progresso salvo)
         if (isVod) {
-          const progress = await storage.getWatchProgress(currentPlayingId);
-          if (progress && progress.positionSec > 10 && progress.positionSec < (progress.durationSec - 30)) {
-            setCurrentTime(progress.positionSec);
-            if (progress.durationSec) setDuration(progress.durationSec);
+          const targetPos = startPosition ? Number(startPosition) : (savedProgress?.positionSec || 0);
+          const targetDur = savedProgress?.durationSec || 0;
+          if (targetPos > 2) {
+            targetPositionRef.current = targetPos;
+            initialSeekDoneRef.current = false;
+            setCurrentTime(targetPos);
+            currentTimeRef.current = targetPos;
+          }
+          if (targetDur > 0) {
+            setDuration(targetDur);
+            durationRef.current = targetDur;
           }
         }
       } catch (e) {
@@ -149,78 +219,125 @@ export default function TVPlayerScreen() {
     resolveUrl();
     return () => {
       isMounted = false;
+      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
     };
-  }, [currentPlayingId, type, container, isVod]);
+  }, [currentPlayingId, type, container, isVod, initialStreamUrl, startPosition, seriesId]);
 
-  // 2. Video Player Instance from expo-video
-  const player = useVideoPlayer(streamUrl || '', (p) => {
+  // 2. Video Player Instance from expo-video (sem p.play() no mount com source null)
+  const player = useVideoPlayer(streamUrl || null, (p) => {
     p.loop = false;
     p.timeUpdateEventInterval = 0.5;
-    p.play();
   });
 
-  // Handler de Falha de Reprodução e Busca de Próxima Versão
+  // Atualiza reprodução quando streamUrl estiver definido
+  useEffect(() => {
+    if (player && streamUrl) {
+      try {
+        player.play();
+      } catch (e) {
+        console.warn('Erro ao iniciar streamUrl no player:', e);
+      }
+    }
+  }, [player, streamUrl]);
+
+  // Aplica o seek inicial de onde o usuário parou
+  const applyInitialSeekIfNeeded = useCallback((p: any) => {
+    if (!initialSeekDoneRef.current && targetPositionRef.current > 2) {
+      initialSeekDoneRef.current = true;
+      const targetSec = targetPositionRef.current;
+      console.log(`[Player TV] Continuando de onde parou: restaurando posição para ${targetSec}s`);
+      try {
+        p.currentTime = targetSec;
+        setCurrentTime(targetSec);
+        currentTimeRef.current = targetSec;
+      } catch (e) {
+        console.warn('[Player TV] Falha ao restaurar posição:', e);
+      }
+    }
+  }, []);
+
+  // Handler de Falha de Reprodução e Busca de Próxima Versão com AUTO-FALLBACK
   const handlePlaybackFailure = useCallback(async () => {
     if (playbackFailureTriggeredRef.current) return;
     playbackFailureTriggeredRef.current = true;
-    setIsBuffering(false);
-    setIsSearchingNextVersion(true);
-    setShowErrorModal(true);
+    setIsBuffering(true);
 
     try {
       if (type === 'movie') {
+        triedIdsRef.current.add(String(currentPlayingId || id));
         const alts = await findAlternativeMovieVersions(name, Number(currentPlayingId || id));
-        if (alts && alts.length > 0) {
-          setSuggestedNextVersion(alts[0]);
-        } else {
-          setSuggestedNextVersion(null);
+        // Encontra uma versão que ainda não foi tentada
+        const nextVer = alts.find((a) => !triedIdsRef.current.has(String(a.stream_id)));
+        if (nextVer) {
+          console.log(`[Auto-Fallback] Alternando para versão alternativa após 10s: ${nextVer.name} (ID: ${nextVer.stream_id})`);
+          const nextId = String(nextVer.stream_id);
+          const nextExt = nextVer.container_extension || 'mp4';
+          triedIdsRef.current.add(nextId);
+          currentContainerRef.current = nextExt;
+          setCurrentPlayingId(nextId);
+          const newUrl = xtreamClient.getStreamUrl(nextId, 'movie', nextExt);
+          setStreamUrl(newUrl);
+          streamUrlRef.current = newUrl;
+          playbackFailureTriggeredRef.current = false;
+          setShowErrorModal(false);
+          setIsBuffering(true);
+
+          if (player) {
+            try {
+              player.play();
+            } catch (e) {}
+          }
+          // Dá mais 10 segundos para a versão alternativa responder
+          startLoadingWatchdog();
+          return;
         }
-      } else {
-        setSuggestedNextVersion(null);
       }
     } catch (e) {
-      setSuggestedNextVersion(null);
-    } finally {
-      setIsSearchingNextVersion(false);
+      console.warn('Erro no auto-fallback:', e);
     }
-  }, [name, currentPlayingId, id, type]);
 
-  // Tentar Próxima Versão
+    // Se nenhuma versão alternativa foi encontrada ou todas falharam:
+    setIsBuffering(false);
+    setShowErrorModal(true);
+  }, [name, currentPlayingId, id, type, player, startLoadingWatchdog]);
+
+  // Tentar Próxima Versão manual (se acionado pelo modal)
   const handleTryNextVersion = () => {
     if (!suggestedNextVersion || !player) return;
     setShowErrorModal(false);
     setIsBuffering(true);
     playbackFailureTriggeredRef.current = false;
     const nextId = String(suggestedNextVersion.stream_id);
+    const nextExt = suggestedNextVersion.container_extension || 'mp4';
+    triedIdsRef.current.add(nextId);
+    currentContainerRef.current = nextExt;
     setCurrentPlayingId(nextId);
     const newUrl = xtreamClient.getStreamUrl(
       nextId,
       'movie',
-      suggestedNextVersion.container_extension || 'mp4'
+      nextExt
     );
     setStreamUrl(newUrl);
+    streamUrlRef.current = newUrl;
     try {
-      (player as any).replace?.(newUrl);
       player.play();
     } catch (e) {
       console.warn('Erro ao trocar stream:', e);
     }
+    startLoadingWatchdog();
   };
 
   // 3. Player Event Listeners
   useEffect(() => {
     if (!player) return;
 
-    // Watchdog de 15 segundos: se o vídeo não iniciar, aciona verificação de versão alternativa
-    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
-    loadTimeoutRef.current = setTimeout(() => {
-      if (currentTimeRef.current <= 0) {
-        handlePlaybackFailure();
-      }
-    }, 15000);
-
     const subPlayingChange = player.addListener('playingChange', (payload) => {
       setIsPlaying(payload.isPlaying);
+      if (payload.isPlaying) {
+        setIsBuffering(false);
+        if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+        applyInitialSeekIfNeeded(player);
+      }
     });
 
     const subStatusChange = player.addListener('statusChange', (payload) => {
@@ -230,29 +347,38 @@ export default function TVPlayerScreen() {
         setShowErrorModal(false);
         setIsBuffering(false);
         const dur = player.duration || 0;
-        if (dur > 0) setDuration(dur);
-
-        // Resume saved progress if available
-        if (currentTimeRef.current > 0 && Math.abs((player.currentTime || 0) - currentTimeRef.current) > 5) {
-          try {
-            player.currentTime = currentTimeRef.current;
-          } catch (e) {}
+        if (dur > 0) {
+          setDuration(dur);
+          durationRef.current = dur;
         }
+
+        // Aplica o seek da posição salva de onde parou
+        applyInitialSeekIfNeeded(player);
       } else if (payload.status === 'loading') {
         setIsBuffering(true);
       } else if (payload.status === 'error') {
-        if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
-        setIsBuffering(false);
-        handlePlaybackFailure();
+        // Ignora status error se ainda não há URL ou nos primeiros instantes
+        if (!streamUrlRef.current) return;
+        console.warn('[Player TV] Evento status error recebido na transmissão.');
       }
     });
 
     const subTimeUpdate = player.addListener('timeUpdate', (payload) => {
       if (payload.currentTime > 0) {
+        setIsBuffering(false);
         if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
       }
+
+      // Se ainda não aplicou o seek inicial para a posição salva:
+      if (!initialSeekDoneRef.current && targetPositionRef.current > 2) {
+        applyInitialSeekIfNeeded(player);
+        return;
+      }
+
+      currentTimeRef.current = payload.currentTime;
       setCurrentTime(payload.currentTime);
       if (player.duration && player.duration > 0) {
+        durationRef.current = player.duration;
         setDuration(player.duration);
       }
     });
@@ -263,7 +389,7 @@ export default function TVPlayerScreen() {
       subStatusChange.remove();
       subTimeUpdate.remove();
     };
-  }, [player, handlePlaybackFailure]);
+  }, [player, applyInitialSeekIfNeeded]);
 
   // Funções de Arrastar o Progresso (Scrubber Dragging)
   const updateScrubFromPageX = (pageX: number) => {
@@ -315,28 +441,37 @@ export default function TVPlayerScreen() {
     })
   ).current;
 
-  // 4. Salva Progresso Periodicamente (a cada 10 segundos para VOD)
+  // 4. Salva Progresso Periodicamente (a cada 5 segundos para VOD) guardando o link que deu certo
   const saveCurrentProgress = useCallback(async () => {
-    if (!isVod || durationRef.current <= 30) return;
+    const pos = Math.floor(currentTimeRef.current);
+    if (!isVod || pos <= 5) return;
+    const finalStreamUrl = streamUrlRef.current || streamUrl;
+    if (!finalStreamUrl) return;
     try {
       await storage.saveWatchProgress({
-        id: String(id),
+        id: String(currentPlayingId || id),
         title: name || 'Título',
         poster: icon || undefined,
         type: type as 'movie' | 'series',
-        positionSec: Math.floor(currentTimeRef.current),
+        positionSec: pos,
         durationSec: Math.floor(durationRef.current),
-        extension: container || 'mp4',
+        extension: currentContainerRef.current || container || 'mp4',
+        streamUrl: finalStreamUrl,
+        seriesId: seriesId ? String(seriesId) : undefined,
+        seriesTitle: seriesTitle || undefined,
+        seasonNum: seasonNum ? Number(seasonNum) : undefined,
+        episodeNum: episodeNum ? Number(episodeNum) : undefined,
         timestamp: Date.now(),
       });
+      console.log(`[Player TV] Progresso salvo: ID=${currentPlayingId || id}, Pos=${pos}s`);
     } catch (e) {}
-  }, [id, name, icon, type, container, isVod]);
+  }, [currentPlayingId, id, name, icon, type, container, streamUrl, seriesId, seriesTitle, seasonNum, episodeNum, isVod]);
 
   useEffect(() => {
     if (!isVod) return;
     progressSaveTimerRef.current = setInterval(() => {
       saveCurrentProgress();
-    }, 10000);
+    }, 5000);
 
     return () => {
       if (progressSaveTimerRef.current) clearInterval(progressSaveTimerRef.current);

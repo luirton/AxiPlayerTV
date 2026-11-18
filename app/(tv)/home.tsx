@@ -14,18 +14,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { TVHeader } from '../../src/components/tv/TVHeader';
 import { FocusableCard } from '../../src/components/tv/FocusableCard';
 import { FocusablePill } from '../../src/components/tv/FocusablePill';
+import { TVCategoryBrandCard } from '../../src/components/tv/TVCategoryBrandCard';
 import { TVMovieDetailsModal } from '../../src/components/tv/TVMovieDetailsModal';
 import { xtreamClient } from '../../src/services/xtreamClient';
 import { storage, WatchProgressItem, MediaListItem } from '../../src/services/storage';
+import { cleanCategoryName, BRAND_COLORS } from '../../src/utils/categoryFormatter';
 import { colors } from '../../src/theme/colors';
 import { tvColors, tvStyles } from '../../src/theme/tvTheme';
 import { LiveStream, VodStream, SeriesStream, LiveChannel, Category } from '../../src/types/iptv';
 
-interface FeaturedCategoryItem {
+interface CategoryItem {
   id: string;
   name: string;
-  type: 'movie' | 'series' | 'live';
-  icon: keyof typeof Ionicons.glyphMap;
+  cleanName: string;
 }
 
 export default function TVHomeScreen() {
@@ -41,7 +42,8 @@ export default function TVHomeScreen() {
   const [continueWatching, setContinueWatching] = useState<WatchProgressItem[]>([]);
   const [watchLaterList, setWatchLaterList] = useState<MediaListItem[]>([]);
   const [availableCategories, setAvailableCategories] = useState<Category[]>([]);
-  const [featuredCategories, setFeaturedCategories] = useState<FeaturedCategoryItem[]>([]);
+  const [movieCategories, setMovieCategories] = useState<CategoryItem[]>([]);
+  const [seriesCategories, setSeriesCategories] = useState<CategoryItem[]>([]);
 
   // Movie Details Modal State (Imagem 8 Standard)
   const [selectedMovieForDetails, setSelectedMovieForDetails] = useState<VodStream | null>(null);
@@ -99,30 +101,27 @@ export default function TVHomeScreen() {
       const allSeriesCats: Category[] = Array.isArray(seriesCatsRes) ? seriesCatsRes : [];
       setAvailableCategories(allVodCats);
 
-      // Build Featured Categories list to replace the streaming brands (Imagem 3)
-      const featCats: FeaturedCategoryItem[] = [];
-
-      // Top VOD Categories
-      allVodCats.slice(0, 6).forEach((c) => {
-        featCats.push({
+      // Limpa e normaliza os nomes das categorias de Filmes (ex: "Filmes | pedidos" -> "Pedidos")
+      const cleanVodList: CategoryItem[] = allVodCats
+        .map((c) => ({
           id: c.category_id,
           name: c.category_name,
-          type: 'movie',
-          icon: 'film-outline',
-        });
-      });
+          cleanName: cleanCategoryName(c.category_name, 'movie'),
+        }))
+        .filter((c) => c.cleanName.length > 0)
+        .slice(0, 30);
+      setMovieCategories(cleanVodList);
 
-      // Top Series Categories
-      allSeriesCats.slice(0, 4).forEach((c) => {
-        featCats.push({
+      // Limpa e normaliza os nomes das categorias de Séries (ex: "Séries | Dorama" -> "Dorama")
+      const cleanSeriesList: CategoryItem[] = allSeriesCats
+        .map((c) => ({
           id: c.category_id,
           name: c.category_name,
-          type: 'series',
-          icon: 'tv-outline',
-        });
-      });
-
-      setFeaturedCategories(featCats);
+          cleanName: cleanCategoryName(c.category_name, 'series'),
+        }))
+        .filter((c) => c.cleanName.length > 0)
+        .slice(0, 30);
+      setSeriesCategories(cleanSeriesList);
 
       const firstVodCatId = allVodCats.length > 0 ? allVodCats[0].category_id : undefined;
       const firstSeriesCatId = allSeriesCats.length > 0 ? allSeriesCats[0].category_id : undefined;
@@ -173,7 +172,7 @@ export default function TVHomeScreen() {
     setSelectedMovieForDetails(movie);
   };
 
-  const handlePlayFromDetails = (movie: VodStream, containerExt?: string) => {
+  const handlePlayFromDetails = (movie: VodStream, containerExt?: string, streamUrl?: string, startPosition?: number) => {
     setSelectedMovieForDetails(null);
     router.push({
       pathname: '/player/[id]',
@@ -183,24 +182,10 @@ export default function TVHomeScreen() {
         name: movie.name,
         container: containerExt || movie.container_extension || 'mp4',
         icon: movie.stream_icon || '',
+        streamUrl: streamUrl || '',
+        startPosition: startPosition ? String(startPosition) : undefined,
       },
     });
-  };
-
-  const handleCategoryPress = (cat: FeaturedCategoryItem) => {
-    if (cat.type === 'movie') {
-      router.push({
-        pathname: '/(tv)/movies',
-        params: { categoryId: cat.id },
-      });
-    } else if (cat.type === 'series') {
-      router.push({
-        pathname: '/(tv)/series',
-        params: { categoryId: cat.id },
-      });
-    } else {
-      router.push('/(tv)/live');
-    }
   };
 
   if (isLoading) {
@@ -314,25 +299,58 @@ export default function TVHomeScreen() {
           </View>
         )}
 
-        {/* Row: Categorias em Destaque (Imagem 3: Substituição da lista de streaming por categorias) */}
-        {featuredCategories.length > 0 && (
+        {/* Row 1: Categorias de Filmes (Layout Estilo Marcas / Imagem do Usuário) */}
+        {movieCategories.length > 0 && (
           <View style={styles.sectionRow}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="grid-outline" size={18} color={colors.primary} style={{ marginRight: 6 }} />
-              <Text style={styles.sectionTitle}>Categorias</Text>
+              <Ionicons name="film" size={20} color={colors.primary} style={{ marginRight: 8 }} />
+              <Text style={styles.sectionTitleInHeader}>Filmes</Text>
             </View>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.categoryCarousel}
+              contentContainerStyle={styles.brandCardsCarousel}
             >
-              {featuredCategories.map((cat) => (
-                <FocusablePill
-                  key={`${cat.type}-${cat.id}`}
-                  label={cat.name}
-                  icon={cat.icon}
-                  onPress={() => handleCategoryPress(cat)}
-                  style={styles.categoryPill}
+              {movieCategories.map((cat, idx) => (
+                <TVCategoryBrandCard
+                  key={`movie-cat-${cat.id}`}
+                  label={cat.cleanName}
+                  accentColor={BRAND_COLORS[idx % BRAND_COLORS.length]}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/(tv)/movies',
+                      params: { categoryId: cat.id },
+                    })
+                  }
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Row 2: Categorias de Séries (Layout Estilo Marcas / Imagem do Usuário) */}
+        {seriesCategories.length > 0 && (
+          <View style={styles.sectionRow}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="tv" size={20} color={colors.primary} style={{ marginRight: 8 }} />
+              <Text style={styles.sectionTitleInHeader}>Séries</Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.brandCardsCarousel}
+            >
+              {seriesCategories.map((cat, idx) => (
+                <TVCategoryBrandCard
+                  key={`series-cat-${cat.id}`}
+                  label={cat.cleanName}
+                  accentColor={BRAND_COLORS[(idx + 3) % BRAND_COLORS.length]}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/(tv)/series',
+                      params: { categoryId: cat.id },
+                    })
+                  }
                 />
               ))}
             </ScrollView>
@@ -375,17 +393,23 @@ export default function TVHomeScreen() {
                       width={140}
                       aspectRatio={2 / 3}
                       onPress={() => {
-                        if (item.type === 'movie') {
-                          handleMoviePress({
-                            stream_id: Number(item.id),
+                        // Continua assistindo direto do ponto salvo usando o link que deu certo
+                        router.push({
+                          pathname: '/player/[id]',
+                          params: {
+                            id: String(item.id),
+                            type: item.type,
                             name: item.title,
-                            stream_icon: item.poster,
-                            category_id: '',
-                            container_extension: item.extension || 'mp4',
-                          } as any);
-                        } else {
-                          handleOpenPlayer(item.id, item.type, item.title);
-                        }
+                            container: item.extension || 'mp4',
+                            icon: item.poster || '',
+                            streamUrl: item.streamUrl || '',
+                            startPosition: String(item.positionSec || 0),
+                            seriesId: item.seriesId ? String(item.seriesId) : undefined,
+                            seriesTitle: item.seriesTitle || undefined,
+                            seasonNum: item.seasonNum ? String(item.seasonNum) : undefined,
+                            episodeNum: item.episodeNum ? String(item.episodeNum) : undefined,
+                          },
+                        });
                       }}
                     />
                     {progressPct > 0 && (
@@ -693,9 +717,19 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     letterSpacing: 0.3,
   },
+  sectionTitleInHeader: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
   carousel: {
     paddingHorizontal: 24,
     gap: 14,
+  },
+  brandCardsCarousel: {
+    paddingHorizontal: 24,
+    paddingVertical: 6,
   },
   categoryCarousel: {
     paddingHorizontal: 24,

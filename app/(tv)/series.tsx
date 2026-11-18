@@ -14,14 +14,15 @@ import {
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { FocusableCard } from '../../src/components/tv/FocusableCard';
 import { FocusablePill } from '../../src/components/tv/FocusablePill';
 import { TVBackButton } from '../../src/components/tv/TVBackButton';
 import { EnrichedPosterImage } from '../../src/components/common/EnrichedPosterImage';
 import { xtreamClient } from '../../src/services/xtreamClient';
-import { storage } from '../../src/services/storage';
+import { storage, WatchProgressItem } from '../../src/services/storage';
 import { enrichMediaMetadata, EnrichedMetadata } from '../../src/services/metadataEnricher';
+import { cleanCategoryName } from '../../src/utils/categoryFormatter';
 import { colors } from '../../src/theme/colors';
 import { tvColors, tvStyles } from '../../src/theme/tvTheme';
 import {
@@ -35,6 +36,7 @@ type SortMode = 'default' | 'asc' | 'desc';
 
 export default function TVSeriesScreen() {
   const router = useRouter();
+  const { categoryId: targetCategoryId } = useLocalSearchParams<{ categoryId?: string }>();
 
   // Catalog State
   const [categories, setCategories] = useState<Category[]>([]);
@@ -55,6 +57,7 @@ export default function TVSeriesScreen() {
   const [isInMyList, setIsInMyList] = useState<boolean>(false);
   const [isInWatchLater, setIsInWatchLater] = useState<boolean>(false);
   const [hasEpisodeProgress, setHasEpisodeProgress] = useState<boolean>(false);
+  const [savedEpisodeProgress, setSavedEpisodeProgress] = useState<WatchProgressItem | null>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState<boolean>(false);
 
   useEffect(() => {
@@ -64,6 +67,7 @@ export default function TVSeriesScreen() {
       if (epId) {
         const prog = await storage.getWatchProgress(epId).catch(() => null);
         if (isMounted) {
+          setSavedEpisodeProgress(prog);
           setHasEpisodeProgress(
             !!(prog && prog.positionSec > 10 && prog.durationSec > 0 && prog.positionSec < prog.durationSec - 30)
           );
@@ -71,6 +75,7 @@ export default function TVSeriesScreen() {
       } else if (selectedSeriesForDetails) {
         const prog = await storage.getWatchProgress(selectedSeriesForDetails.series_id).catch(() => null);
         if (isMounted) {
+          setSavedEpisodeProgress(prog);
           setHasEpisodeProgress(!!(prog && prog.positionSec > 10));
         }
       }
@@ -110,7 +115,11 @@ export default function TVSeriesScreen() {
       setCategories(allCategories);
 
       if (allCategories.length > 0) {
-        const initialCat = allCategories[0];
+        let initialCat = allCategories[0];
+        if (targetCategoryId) {
+          const match = allCategories.find((c) => String(c.category_id) === String(targetCategoryId));
+          if (match) initialCat = match;
+        }
         setSelectedCategory(initialCat);
         loadSeries(initialCat.category_id, cats[0]?.category_id);
       }
@@ -203,13 +212,39 @@ export default function TVSeriesScreen() {
         name: `${seriesTitle} • T${episode.season}E${episode.episode_num}: ${episode.title}`,
         container: episode.container_extension || 'mp4',
         icon: selectedSeriesForDetails.cover || detailsMeta?.poster || '',
+        seriesId: String(selectedSeriesForDetails.series_id),
+        seriesTitle: seriesTitle,
+        seasonNum: String(episode.season),
+        episodeNum: String(episode.episode_num),
       },
     });
   };
 
-  // Botão principal: Assistir Primeiro Episódio ou Episódio Focado
+  // Botão principal: Assistir Último Episódio Visto ou Primeiro Episódio
   const handlePlayFirstEpisode = () => {
     if (!selectedSeriesForDetails || !seriesDetails?.episodes) return;
+    // Se tiver progresso salvo do último episódio visto desta série, continua dele com o link que deu certo
+    if (savedEpisodeProgress && savedEpisodeProgress.id) {
+      handleCloseDetails();
+      router.push({
+        pathname: '/player/[id]',
+        params: {
+          id: String(savedEpisodeProgress.id),
+          type: 'series',
+          name: savedEpisodeProgress.title,
+          container: savedEpisodeProgress.extension || 'mp4',
+          icon: savedEpisodeProgress.poster || selectedSeriesForDetails.cover || detailsMeta?.poster || '',
+          streamUrl: savedEpisodeProgress.streamUrl || '',
+          startPosition: String(savedEpisodeProgress.positionSec || 0),
+          seriesId: String(selectedSeriesForDetails.series_id),
+          seriesTitle: selectedSeriesForDetails.name,
+          seasonNum: savedEpisodeProgress.seasonNum ? String(savedEpisodeProgress.seasonNum) : undefined,
+          episodeNum: savedEpisodeProgress.episodeNum ? String(savedEpisodeProgress.episodeNum) : undefined,
+        },
+      });
+      return;
+    }
+
     const seasonKeys = Object.keys(seriesDetails.episodes);
     const seasonKey = seasonKeys.includes(selectedSeasonNumber) ? selectedSeasonNumber : seasonKeys[0];
     const eps = seriesDetails.episodes[seasonKey] || [];
@@ -355,7 +390,9 @@ export default function TVSeriesScreen() {
 
           <View style={styles.categoryTitleGroup}>
             <Text style={styles.categoryMainTitle}>
-              {selectedCategory?.category_name.toUpperCase() || 'SÉRIES'}
+              {selectedCategory?.category_id === 'favorites'
+                ? selectedCategory.category_name.toUpperCase()
+                : cleanCategoryName(selectedCategory?.category_name || '', 'series').toUpperCase() || 'SÉRIES'}
             </Text>
             <Text style={styles.categoryCountSubtitle}>
               {seriesList.length.toLocaleString('pt-BR')} títulos
@@ -397,7 +434,7 @@ export default function TVSeriesScreen() {
               return (
                 <FocusablePill
                   key={cat.category_id}
-                  label={cat.category_name}
+                  label={cat.category_id === 'favorites' ? cat.category_name : cleanCategoryName(cat.category_name, 'series')}
                   variant="category"
                   isSelected={isSelected}
                   onPress={() => {
@@ -554,6 +591,8 @@ export default function TVSeriesScreen() {
                       {hasEpisodeProgress
                         ? focusedEpisode
                           ? `Continuar T${focusedEpisode.season}:E${focusedEpisode.episode_num}`
+                          : savedEpisodeProgress?.seasonNum && savedEpisodeProgress?.episodeNum
+                          ? `Continuar T${savedEpisodeProgress.seasonNum}:E${savedEpisodeProgress.episodeNum}`
                           : 'Continuar Assistindo'
                         : focusedEpisode
                         ? `Assistir T${focusedEpisode.season}:E${focusedEpisode.episode_num}`

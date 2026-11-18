@@ -40,7 +40,7 @@ interface TVMovieDetailsModalProps {
   availableCategories?: Category[];
   favoriteIds?: number[];
   onClose: () => void;
-  onPlayMovie: (movie: VodStream, containerExt?: string) => void;
+  onPlayMovie: (movie: VodStream, containerExt?: string, streamUrl?: string, startPosition?: number) => void;
   onToggleFavorite?: (movie: VodStream) => void;
 }
 
@@ -62,6 +62,7 @@ export const TVMovieDetailsModal: React.FC<TVMovieDetailsModalProps> = ({
   const [isInWatchLater, setIsInWatchLater] = useState<boolean>(false);
   const [isInMyList, setIsInMyList] = useState<boolean>(false);
   const [hasProgress, setHasProgress] = useState<boolean>(false);
+  const [watchProgress, setWatchProgress] = useState<any | null>(null);
 
   // Versions found across playlist
   const [versions, setVersions] = useState<MovieVersionItem[]>([]);
@@ -98,7 +99,7 @@ export const TVMovieDetailsModal: React.FC<TVMovieDetailsModalProps> = ({
           enrichMediaMetadata(movie.name, 'movie').catch(() => null),
           storage.isInWatchLater(movie.stream_id).catch(() => false),
           storage.isInMyList(movie.stream_id).catch(() => false),
-          storage.getWatchProgress(movie.stream_id).catch(() => null),
+          storage.getWatchProgress(movie.stream_id, movie.name).catch(() => null),
         ]);
 
         if (isMounted) {
@@ -106,8 +107,9 @@ export const TVMovieDetailsModal: React.FC<TVMovieDetailsModalProps> = ({
           setEnrichedMeta(meta);
           setIsInWatchLater(inLater);
           setIsInMyList(inList);
+          setWatchProgress(progress);
           setHasProgress(
-            !!(progress && progress.positionSec > 10 && progress.durationSec > 0 && progress.positionSec < progress.durationSec - 30)
+            !!(progress && progress.positionSec > 5 && (progress.durationSec === 0 || progress.positionSec < progress.durationSec - 30))
           );
         }
 
@@ -362,7 +364,14 @@ export const TVMovieDetailsModal: React.FC<TVMovieDetailsModalProps> = ({
                   hasTVPreferredFocus={true}
                   onFocus={() => setFocusedBtn('play')}
                   onBlur={() => setFocusedBtn(null)}
-                  onPress={() => onPlayMovie(movie, movieData.container_extension || movie.container_extension)}
+                  onPress={() => onPlayMovie(
+                    watchProgress?.id && String(watchProgress.id) !== String(movie.stream_id)
+                      ? { ...movie, stream_id: Number(watchProgress.id) }
+                      : movie,
+                    watchProgress?.extension || movieData.container_extension || movie.container_extension,
+                    watchProgress?.streamUrl,
+                    watchProgress?.positionSec
+                  )}
                   style={[
                     styles.watchButton,
                     focusedBtn === 'play' && styles.watchButtonFocused,

@@ -10,13 +10,14 @@ import {
   BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { FocusableCard } from '../../src/components/tv/FocusableCard';
 import { FocusablePill } from '../../src/components/tv/FocusablePill';
 import { TVBackButton } from '../../src/components/tv/TVBackButton';
 import { TVMovieDetailsModal } from '../../src/components/tv/TVMovieDetailsModal';
 import { xtreamClient } from '../../src/services/xtreamClient';
 import { storage } from '../../src/services/storage';
+import { cleanCategoryName } from '../../src/utils/categoryFormatter';
 import { colors } from '../../src/theme/colors';
 import { Category, VodStream } from '../../src/types/iptv';
 
@@ -24,6 +25,7 @@ type SortMode = 'default' | 'asc' | 'desc';
 
 export default function TVMoviesScreen() {
   const router = useRouter();
+  const { categoryId: targetCategoryId } = useLocalSearchParams<{ categoryId?: string }>();
 
   // Catalog State
   const [categories, setCategories] = useState<Category[]>([]);
@@ -66,7 +68,11 @@ export default function TVMoviesScreen() {
       setCategories(allCategories);
 
       if (allCategories.length > 0) {
-        const initialCat = allCategories[0];
+        let initialCat = allCategories[0];
+        if (targetCategoryId) {
+          const match = allCategories.find((c) => String(c.category_id) === String(targetCategoryId));
+          if (match) initialCat = match;
+        }
         setSelectedCategory(initialCat);
         loadMovies(initialCat.category_id, cats[0]?.category_id);
       }
@@ -114,7 +120,7 @@ export default function TVMoviesScreen() {
   };
 
   // Reproduz o filme
-  const handlePlayMovie = (movie: VodStream, containerExt?: string) => {
+  const handlePlayMovie = (movie: VodStream, containerExt?: string, streamUrl?: string, startPosition?: number) => {
     handleCloseDetails();
     router.push({
       pathname: '/player/[id]',
@@ -124,6 +130,8 @@ export default function TVMoviesScreen() {
         name: movie.name,
         container: containerExt || movie.container_extension || 'mp4',
         icon: movie.stream_icon || '',
+        streamUrl: streamUrl || '',
+        startPosition: startPosition ? String(startPosition) : undefined,
       },
     });
   };
@@ -236,7 +244,7 @@ export default function TVMoviesScreen() {
               return (
                 <FocusablePill
                   key={cat.category_id}
-                  label={cat.category_name}
+                  label={cat.category_id === 'favorites' ? cat.category_name : cleanCategoryName(cat.category_name, 'movie')}
                   variant="category"
                   isSelected={isSelected}
                   onPress={() => {

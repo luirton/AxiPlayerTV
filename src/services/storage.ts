@@ -45,6 +45,11 @@ export interface WatchProgressItem {
   extension?: string;
   timestamp: number;
   extra?: any;
+  streamUrl?: string; // Link direto do vídeo que deu certo na exibição
+  seriesId?: number | string; // ID da série (quando for episódio de série)
+  seriesTitle?: string; // Nome da série
+  seasonNum?: number; // Número da temporada
+  episodeNum?: number; // Número do episódio
 }
 
 export interface AppSettings {
@@ -370,10 +375,74 @@ export const storage = {
     return stored === inputPin.trim();
   },
 
+  // Normaliza o título do filme para comparar versões diferentes (ex: Mestres do Universo)
+  normalizeMovieTitle(raw: string): string {
+    if (!raw) return '';
+    return raw
+      .toLowerCase()
+      .replace(/\[.*?\]|\(.*?\)/g, '')
+      .replace(/\b(4k|uhd|fhd|hd|sd|dual|dublado|legendado|leg|dub|nacional|pedido|pedidos|lancamento|lancamentos)\b/gi, '')
+      .replace(/[^a-z0-9]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  },
+
+  // Extrai chave base de identificação da série para garantir que apenas o último episódio visto seja mantido
+  extractSeriesBaseKey(item: Partial<WatchProgressItem>): string | null {
+    if (item.seriesId) return `series_id_${item.seriesId}`;
+    if (item.seriesTitle) return `series_title_${item.seriesTitle.trim().toLowerCase()}`;
+    if (item.type === 'series' && item.title) {
+      const base = item.title.split(/[•\-–—]/)[0]?.trim().toLowerCase();
+      if (base) return `series_title_${base}`;
+    }
+    return null;
+  },
+
   // Watch Progress (Continuar Assistindo)
   async saveWatchProgress(item: Partial<WatchProgressItem> & { id: number | string; positionSec: number; durationSec: number }): Promise<void> {
     const json = await AsyncStorage.getItem(KEYS.WATCH_PROGRESS);
     const progress: Record<string, WatchProgressItem> = json ? JSON.parse(json) : {};
+
+    // Quando for Série: guarda somente o último visto e remove qualquer outro episódio anterior da mesma série
+    if (item.type === 'series') {
+      const targetKey = this.extractSeriesBaseKey(item);
+      for (const [key, existing] of Object.entries(progress)) {
+        if (existing.type === 'series') {
+          const existingKey = this.extractSeriesBaseKey(existing);
+          const isSameSeries =
+            (targetKey && existingKey && targetKey === existingKey) ||
+            (item.seriesId && existing.seriesId && String(item.seriesId) === String(existing.seriesId)) ||
+            (item.seriesTitle && existing.seriesTitle && item.seriesTitle.trim().toLowerCase() === existing.seriesTitle.trim().toLowerCase());
+          if (isSameSeries) {
+            delete progress[key];
+          }
+        }
+      }
+    }
+
+    // Quando for Filme: remove qualquer outra versão anterior do mesmo filme (título normalizado igual)
+    // para garantir que a versão que deu certo substitua a versão quebrada
+    if (item.type === 'movie' && item.title) {
+      const targetNorm = this.normalizeMovieTitle(item.title);
+      if (targetNorm.length >= 2) {
+        for (const [key, existing] of Object.entries(progress)) {
+          if (existing.type === 'movie' && key !== String(item.id)) {
+            const existingNorm = this.normalizeMovieTitle(existing.title || '');
+            if (existingNorm === targetNorm) {
+              // Se a versão existente já tinha link confirmado que deu certo (streamUrl) e o item novo NÃO tem,
+              // preserva o link e o ID da versão que funcionou!
+              if (existing.streamUrl && !item.streamUrl) {
+                item.streamUrl = existing.streamUrl;
+                item.id = existing.id;
+                if (existing.extension) item.extension = existing.extension;
+              } else {
+                delete progress[key];
+              }
+            }
+          }
+        }
+      }
+    }
 
     progress[String(item.id)] = {
       id: item.id,
@@ -383,6 +452,11 @@ export const storage = {
       positionSec: item.positionSec,
       durationSec: item.durationSec,
       extension: item.extension || 'mp4',
+      streamUrl: item.streamUrl,
+      seriesId: item.seriesId,
+      seriesTitle: item.seriesTitle,
+      seasonNum: item.seasonNum,
+      episodeNum: item.episodeNum,
       timestamp: Date.now(),
       extra: item.extra,
     };
@@ -390,11 +464,37 @@ export const storage = {
     await AsyncStorage.setItem(KEYS.WATCH_PROGRESS, JSON.stringify(progress));
   },
 
-  async getWatchProgress(id: number | string): Promise<WatchProgressItem | null> {
+  async getWatchProgress(id: number | string, title?: string): Promise<WatchProgressItem | null> {
     const json = await AsyncStorage.getItem(KEYS.WATCH_PROGRESS);
     if (!json) return null;
     const progress: Record<string, WatchProgressItem> = JSON.parse(json);
-    return progress[String(id)] || null;
+    const strId = String(id);
+    if (progress[strId]) {
+      const direct = progress[strId];
+      if (direct.streamUrl) return direct;
+    }
+
+    // Se tiver título e for filme, busca se há outra versão do mesmo filme com link salvo que funcionou
+    if (title) {
+      const norm = this.normalizeMovieTitle(title);
+      if (norm.length >= 2) {
+        const movieWithUrl = Object.values(progress).find(
+          (item) => item.type === 'movie' && this.normalizeMovieTitle(item.title) === norm && !!item.streamUrl
+        );
+        if (movieWithUrl) return movieWithUrl;
+      }
+    }
+
+    if (progress[strId]) return progress[strId];
+
+    // Busca alternativa por seriesId, episodeId ou título da série
+    const found = Object.values(progress).find((item) => {
+      if (item.type !== 'series') return false;
+      if (String(item.seriesId) === strId || String(item.id) === strId) return true;
+      if (title && item.seriesTitle && item.seriesTitle.trim().toLowerCase() === title.trim().toLowerCase()) return true;
+      return false;
+    });
+    return found || null;
   },
 
   async getAllWatchProgress(): Promise<WatchProgressItem[]> {
@@ -402,9 +502,52 @@ export const storage = {
     if (!json) return [];
     try {
       const progress: Record<string, WatchProgressItem> = JSON.parse(json);
-      return Object.values(progress)
-        .filter((item) => item.positionSec > 10 && item.positionSec < (item.durationSec - 30))
-        .sort((a, b) => b.timestamp - a.timestamp);
+      const validItems = Object.values(progress).filter((item) => {
+        if (item.durationSec > 60 && item.positionSec >= (item.durationSec - 30)) {
+          return false;
+        }
+        return item.positionSec > 2 || !!item.streamUrl;
+      });
+
+      const seriesMap = new Map<string, WatchProgressItem>();
+      const movieMap = new Map<string, WatchProgressItem>();
+      const otherItems: WatchProgressItem[] = [];
+
+      for (const item of validItems) {
+        if (item.type === 'series') {
+          const sKey = this.extractSeriesBaseKey(item) || String(item.id);
+          const existing = seriesMap.get(sKey);
+          if (!existing || item.timestamp > existing.timestamp) {
+            seriesMap.set(sKey, item);
+          }
+        } else if (item.type === 'movie') {
+          const mKey = this.normalizeMovieTitle(item.title || '') || String(item.id);
+          const existing = movieMap.get(mKey);
+          if (!existing) {
+            movieMap.set(mKey, item);
+          } else {
+            // Prioriza a versão que tem streamUrl salva; se ambos tiverem ou nenhum tiver, o mais recente
+            const itemHasUrl = !!item.streamUrl;
+            const existingHasUrl = !!existing.streamUrl;
+            if (itemHasUrl && !existingHasUrl) {
+              movieMap.set(mKey, item);
+            } else if (!itemHasUrl && existingHasUrl) {
+              // mantém o existing com URL
+            } else if (item.timestamp > existing.timestamp) {
+              movieMap.set(mKey, item);
+            }
+          }
+        } else {
+          otherItems.push(item);
+        }
+      }
+
+      const deduplicated = [
+        ...otherItems,
+        ...Array.from(movieMap.values()),
+        ...Array.from(seriesMap.values()),
+      ];
+      return deduplicated.sort((a, b) => b.timestamp - a.timestamp);
     } catch {
       return [];
     }
