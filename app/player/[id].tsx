@@ -127,7 +127,6 @@ export default function TVPlayerScreen() {
     if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
     loadTimeoutRef.current = setTimeout(() => {
       if (currentTimeRef.current <= 0) {
-        console.log('[Player Watchdog] 10s sem início de reprodução. Acionando fallback para versão alternativa...');
         handlePlaybackFailure();
       }
     }, 10000);
@@ -245,13 +244,12 @@ export default function TVPlayerScreen() {
     if (!initialSeekDoneRef.current && targetPositionRef.current > 2) {
       initialSeekDoneRef.current = true;
       const targetSec = targetPositionRef.current;
-      console.log(`[Player TV] Continuando de onde parou: restaurando posição para ${targetSec}s`);
       try {
         p.currentTime = targetSec;
         setCurrentTime(targetSec);
         currentTimeRef.current = targetSec;
       } catch (e) {
-        console.warn('[Player TV] Falha ao restaurar posição:', e);
+        // Falha silenciosa de seek
       }
     }
   }, []);
@@ -269,7 +267,6 @@ export default function TVPlayerScreen() {
         // Encontra uma versão que ainda não foi tentada
         const nextVer = alts.find((a) => !triedIdsRef.current.has(String(a.stream_id)));
         if (nextVer) {
-          console.log(`[Auto-Fallback] Alternando para versão alternativa após 10s: ${nextVer.name} (ID: ${nextVer.stream_id})`);
           const nextId = String(nextVer.stream_id);
           const nextExt = nextVer.container_extension || 'mp4';
           triedIdsRef.current.add(nextId);
@@ -359,7 +356,6 @@ export default function TVPlayerScreen() {
       } else if (payload.status === 'error') {
         // Ignora status error se ainda não há URL ou nos primeiros instantes
         if (!streamUrlRef.current) return;
-        console.warn('[Player TV] Evento status error recebido na transmissão.');
       }
     });
 
@@ -463,7 +459,6 @@ export default function TVPlayerScreen() {
         episodeNum: episodeNum ? Number(episodeNum) : undefined,
         timestamp: Date.now(),
       });
-      console.log(`[Player TV] Progresso salvo: ID=${currentPlayingId || id}, Pos=${pos}s`);
     } catch (e) {}
   }, [currentPlayingId, id, name, icon, type, container, streamUrl, seriesId, seriesTitle, seasonNum, episodeNum, isVod]);
 
