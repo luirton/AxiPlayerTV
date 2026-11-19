@@ -383,6 +383,6 @@ axi-player-tv/
     6. **`app/(tv)/movies.tsx` (Catálogo de Filmes Grid):** Barra superior de categorias com filtros de ordenação e grid focável de alta performance que abre o modal de detalhes.
     7. **`app/(tv)/series.tsx` (Catálogo de Séries com Temporadas):** Grid de séries, modal de detalhes completo lado a lado com seletor de temporadas e cards horizontais de episódios.
     8. **`app/(tv)/search.tsx` (Busca Global com Teclado TV):** Teclado virtual na tela adaptado para D-Pad com busca simultânea em canais ao vivo e catálogo VOD.
-    9. **`app/(tv)/settings.tsx` (Ajustes & Gerenciador de Lista):** Dados da conta, sincronização programada da lista (3 a 5 dias), recarregamento forçado e limpeza de cache.
+    9. **`app/(tv)/settings.tsx` (Ajustes & Gerenciador de Lista):** Dados da conta, sincronização programada da lista (3 a 5 dias), recarregamento forçado, limpeza de cache e nova seção **"MINHAS LISTAS & COLEÇÕES"** com grid focável e modal gerenciador de 4 abas (*Favoritos*, *Continuar Assistindo*, *Minha Lista*, *Assistir Depois*) com ações de reproduzir e excluir.
     10. **`app/player/[id].tsx` (Player Widescreen Imersivo):** ExoPlayer nativo com timeline interativa, avanço arrastável (draggable scrubber com tooltip de tempo flutuante), controles de volume/brilho, detecção de falha de carregamento com fallback automático para versão alternativa e modal de saída com botão branco de alto contraste.
   * Compilação TypeScript validada com **0 erros** (`npx tsc --noEmit`).

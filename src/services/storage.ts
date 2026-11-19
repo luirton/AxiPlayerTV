@@ -553,6 +553,19 @@ export const storage = {
     }
   },
 
+  async removeWatchProgress(id: number | string): Promise<void> {
+    const json = await AsyncStorage.getItem(KEYS.WATCH_PROGRESS);
+    if (!json) return;
+    try {
+      const progress: Record<string, WatchProgressItem> = JSON.parse(json);
+      const strId = String(id);
+      if (progress[strId]) {
+        delete progress[strId];
+        await AsyncStorage.setItem(KEYS.WATCH_PROGRESS, JSON.stringify(progress));
+      }
+    } catch {}
+  },
+
   // Minha Lista (Filmes e Séries adicionados à lista)
   async getMyList(): Promise<MediaListItem[]> {
     const json = await AsyncStorage.getItem(KEYS.MY_LIST);
