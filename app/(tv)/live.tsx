@@ -35,11 +35,14 @@ export default function TVLiveScreen() {
 
   // OSD & Remote Navigation State
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isZappingBannerOpen, setIsZappingBannerOpen] = useState(false);
+  const [isOverlayOpen, setIsOverlayOpen] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [contentFit, setContentFit] = useState<'contain' | 'cover' | 'fill'>('contain');
   const [currentEpg, setCurrentEpg] = useState<EpgProgram | null>(null);
+  const [epgList, setEpgList] = useState<EpgProgram[]>([]);
   const [showExitDialog, setShowExitDialog] = useState(false);
 
-  const zappingTimerRef = useRef<any>(null);
+  const overlayTimerRef = useRef<any>(null);
   const centerFocusRef = useRef<any>(null);
   const activeChannelRef = useRef<LiveChannel | null>(null);
   const channelsRef = useRef<LiveChannel[]>([]);
@@ -117,14 +120,63 @@ export default function TVLiveScreen() {
       if (initialCategory) {
         await loadCategoryChannels(initialCategory.category_id, lastChannel || undefined);
       }
-      // Inicia com o Guia de Canais aberto sobreposto ao vídeo para escolha imediata
-      setIsDrawerOpen(true);
+      // Inicia direto em tela cheia com o overlay de controles visível por 6 segundos
+      setIsDrawerOpen(false);
+      openOverlay(6000);
     } catch (err) {
       console.error('Failed to initialize Live TV:', err);
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Abre o overlay de controles do player de TV ao vivo com temporizador de auto-hide
+  const openOverlay = useCallback((duration: number = 6000) => {
+    setIsOverlayOpen(true);
+    if (overlayTimerRef.current) {
+      clearTimeout(overlayTimerRef.current);
+    }
+    overlayTimerRef.current = setTimeout(() => {
+      setIsOverlayOpen(false);
+    }, duration);
+  }, []);
+
+  const closeOverlay = useCallback(() => {
+    if (overlayTimerRef.current) {
+      clearTimeout(overlayTimerRef.current);
+      overlayTimerRef.current = null;
+    }
+    setIsOverlayOpen(false);
+  }, []);
+
+  const resetOverlayTimer = useCallback(() => {
+    openOverlay(6000);
+  }, [openOverlay]);
+
+  // Alterna Play / Pause do Player de TV ao Vivo
+  const togglePlayPause = useCallback(() => {
+    if (!player) return;
+    try {
+      if (isPlaying) {
+        player.pause();
+        setIsPlaying(false);
+      } else {
+        player.play();
+        setIsPlaying(true);
+      }
+    } catch (e) {
+      console.warn('Erro ao alternar reprodução:', e);
+    }
+  }, [player, isPlaying]);
+
+  // Alterna proporção de tela do vídeo
+  const toggleContentFit = useCallback(() => {
+    setContentFit((prev) => {
+      if (prev === 'contain') return 'cover';
+      if (prev === 'cover') return 'fill';
+      return 'contain';
+    });
+  }, []);
 
   // Load Channels for a Category
   const loadCategoryChannels = async (categoryId: string, preferredChannel?: LiveChannel) => {
@@ -145,7 +197,7 @@ export default function TVLiveScreen() {
           : list[0] || null;
 
       if (targetChannel) {
-        tuneChannel(targetChannel, false, true);
+        tuneChannel(targetChannel, true, true);
       }
     } catch (err) {
       console.error('Failed to load category channels:', err);
@@ -161,7 +213,7 @@ export default function TVLiveScreen() {
       if (isSameChannel && !forceReload) {
         // Se for o mesmo canal que já está sendo assistido, NÃO recarrega o player de vídeo!
         if (showBanner) {
-          triggerZappingBanner();
+          openOverlay(4500);
         }
         return;
       }
@@ -177,6 +229,7 @@ export default function TVLiveScreen() {
         try {
           player.replace(url);
           player.play();
+          setIsPlaying(true);
         } catch (e) {
           console.warn('Error replacing player stream:', e);
         }
@@ -185,42 +238,33 @@ export default function TVLiveScreen() {
       // Persist as last watched
       storage.saveLastLiveChannel(channel);
 
-      // Show Zapping Banner only if requested
+      // Exibe overlay do canal sintonizado
       if (showBanner) {
-        triggerZappingBanner();
+        openOverlay(5000);
       } else {
-        setIsZappingBannerOpen(false);
+        closeOverlay();
       }
 
       // Fetch EPG in background
       try {
-        const epgList = await xtreamClient.getShortEpg(channel.stream_id);
+        const fetchedEpg = await xtreamClient.getShortEpg(channel.stream_id);
         if (activeChannelRef.current?.stream_id === channel.stream_id) {
-          if (epgList && epgList.length > 0) {
-            setCurrentEpg(epgList[0]);
+          setEpgList(fetchedEpg || []);
+          if (fetchedEpg && fetchedEpg.length > 0) {
+            setCurrentEpg(fetchedEpg[0]);
           } else {
             setCurrentEpg(null);
           }
         }
       } catch {
         if (activeChannelRef.current?.stream_id === channel.stream_id) {
+          setEpgList([]);
           setCurrentEpg(null);
         }
       }
     },
-    [player, activeChannel]
+    [player, activeChannel, openOverlay, closeOverlay]
   );
-
-  // Trigger Zapping Banner with 5s auto-hide timer
-  const triggerZappingBanner = () => {
-    setIsZappingBannerOpen(true);
-    if (zappingTimerRef.current) {
-      clearTimeout(zappingTimerRef.current);
-    }
-    zappingTimerRef.current = setTimeout(() => {
-      setIsZappingBannerOpen(false);
-    }, 5000);
-  };
 
   // Handle D-Pad Zapping (Next / Previous Channel) - Percorre TODOS os canais da categoria
   const handleZapping = useCallback((direction: 'next' | 'prev') => {
@@ -278,13 +322,15 @@ export default function TVLiveScreen() {
         setShowExitDialog(false);
         return true;
       }
-      // Se estiver no Guia e apertar Voltar, fecha o guia e assiste em tela cheia
+      // Se estiver no Guia de Canais e apertar Voltar, fecha o guia e volta ao overlay do vídeo
       if (isDrawerOpen) {
         setIsDrawerOpen(false);
+        openOverlay(5000);
         return true;
       }
-      if (isZappingBannerOpen) {
-        setIsZappingBannerOpen(false);
+      // Se o overlay de controles estiver visível, fecha e assiste em tela cheia limpa
+      if (isOverlayOpen) {
+        closeOverlay();
         return true;
       }
 
@@ -295,7 +341,7 @@ export default function TVLiveScreen() {
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => backHandler.remove();
-  }, [isDrawerOpen, isZappingBannerOpen, showExitDialog]);
+  }, [isDrawerOpen, isOverlayOpen, showExitDialog, openOverlay, closeOverlay]);
 
   // Handle Category Select
   const handleCategorySelect = (cat: IptvCategory) => {
@@ -309,7 +355,7 @@ export default function TVLiveScreen() {
     const currentChan = activeChannelRef.current || activeChannel;
     if (currentChan && String(currentChan.stream_id) === String(channel.stream_id)) {
       // Já está assistindo este canal: NÃO recarrega o player de vídeo!
-      triggerZappingBanner();
+      openOverlay(4500);
       return;
     }
     tuneChannel(channel, true);
@@ -317,7 +363,7 @@ export default function TVLiveScreen() {
 
   // Abre o Guia garantindo que a categoria e o canal ativo estejam selecionados
   const openChannelMenu = () => {
-    setIsZappingBannerOpen(false);
+    closeOverlay();
     const currentChan = activeChannelRef.current || activeChannel;
     if (currentChan && currentChan.category_id && selectedCategory?.category_id !== currentChan.category_id) {
       const matchCat = categories.find((c) => String(c.category_id) === String(currentChan.category_id));
@@ -331,12 +377,12 @@ export default function TVLiveScreen() {
 
   // Garante que o foco sempre retorne para o centro ao fechar a gaveta ou diálogos
   useEffect(() => {
-    if (!isDrawerOpen && !showExitDialog) {
+    if (!isDrawerOpen && !isOverlayOpen && !showExitDialog) {
       setTimeout(() => {
         centerFocusRef.current?.focus?.();
       }, 100);
     }
-  }, [isDrawerOpen, showExitDialog]);
+  }, [isDrawerOpen, isOverlayOpen, showExitDialog]);
 
   if (isLoading) {
     return (
@@ -355,7 +401,7 @@ export default function TVLiveScreen() {
           <VideoView
             player={player}
             style={StyleSheet.absoluteFill}
-            contentFit="contain"
+            contentFit={contentFit}
             nativeControls={false}
           />
         ) : (
@@ -366,21 +412,24 @@ export default function TVLiveScreen() {
         )}
       </View>
 
-      {/* 2. Toque ou Tecla em Tela Cheia abre o Guia de Canais posicionado no canal ativo */}
-      {!isDrawerOpen && !showExitDialog && (
+      {/* 2. Toque ou Tecla OK em Tela Cheia abre o Overlay do Player com controles */}
+      {!isOverlayOpen && !isDrawerOpen && !showExitDialog && (
         <Pressable
           ref={centerFocusRef}
           focusable={true}
           hasTVPreferredFocus={true}
-          onPress={openChannelMenu}
+          onPress={() => openOverlay(6000)}
           style={StyleSheet.absoluteFill}
         />
       )}
 
-      {/* 3. On-Screen Display (OSD) Multicamadas: Gaveta Translúcida & Zapping */}
+      {/* 3. On-Screen Display (OSD): Overlay do Player & Gaveta de Canais */}
       <TVLiveOSD
         isDrawerOpen={isDrawerOpen}
-        onCloseDrawer={() => setIsDrawerOpen(false)}
+        onCloseDrawer={() => {
+          setIsDrawerOpen(false);
+          openOverlay(5000);
+        }}
         categories={categories}
         selectedCategory={selectedCategory}
         onSelectCategory={handleCategorySelect}
@@ -389,10 +438,19 @@ export default function TVLiveScreen() {
         onSelectChannel={handleChannelSelect}
         favoriteIds={favoriteIds}
         onToggleFavorite={handleToggleFavorite}
-        isZappingBannerOpen={isZappingBannerOpen}
+        isOverlayOpen={isOverlayOpen}
+        onCloseOverlay={closeOverlay}
         currentEpg={currentEpg}
+        epgList={epgList}
         onExitToHome={() => router.replace('/(tv)/home')}
+        onPreviousChannel={() => handleZapping('prev')}
+        onNextChannel={() => handleZapping('next')}
         onOpenDrawer={openChannelMenu}
+        isPlaying={isPlaying}
+        onTogglePlayPause={togglePlayPause}
+        contentFit={contentFit}
+        onToggleContentFit={toggleContentFit}
+        onResetOverlayTimer={resetOverlayTimer}
       />
 
       {/* 4. Modal de Confirmação de Saída para o Menu Principal */}

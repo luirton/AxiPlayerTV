@@ -114,13 +114,17 @@ export default function TVPlayerScreen() {
   const targetPositionRef = useRef<number>(0);
   const initialSeekDoneRef = useRef<boolean>(false);
 
-  // Refs e Lógica para Avanço / Retrocesso Contínuo ao Segurar Botão
+  // Refs e Lógica para Avanço / Retrocesso Contínuo e Acelerado (Controle Remoto TV e Touch)
   const continuousSeekTimerRef = useRef<any>(null);
   const continuousSeekIntervalRef = useRef<any>(null);
   const isContinuousSeekingRef = useRef<boolean>(false);
   const continuousTargetRef = useRef<number>(0);
   const continuousStartPosRef = useRef<number>(0);
   const continuousTicksRef = useRef<number>(0);
+  const lastPressTimeRef = useRef<number>(0);
+  const pressStreakRef = useRef<number>(0);
+  const accumulatedSeekSecRef = useRef<number>(0);
+  const seekCommitDebounceRef = useRef<any>(null);
 
   currentTimeRef.current = currentTime;
   durationRef.current = duration;
@@ -540,7 +544,38 @@ export default function TVPlayerScreen() {
     return `${sec >= 0 ? '+' : ''}${sec}s`;
   };
 
-  // Avanço e Retrocesso Contínuos e Acelerados ao Segurar os Botões
+  // Comita o avanço acumulado para o player de vídeo (após soltar a tecla no controle ou tela)
+  const commitAccumulatedSeek = useCallback(() => {
+    if (seekCommitDebounceRef.current) {
+      clearTimeout(seekCommitDebounceRef.current);
+      seekCommitDebounceRef.current = null;
+    }
+    const finalTarget = accumulatedSeekSecRef.current;
+    if (player && durationRef.current > 0 && finalTarget >= 0) {
+      player.currentTime = finalTarget;
+      setCurrentTime(finalTarget);
+      currentTimeRef.current = finalTarget;
+      saveCurrentProgress();
+    }
+
+    setSeekFlash({
+      visible: true,
+      type: 'fwd',
+      label: `▶ ${formatTime(finalTarget)}`,
+    });
+
+    if (seekFlashTimerRef.current) clearTimeout(seekFlashTimerRef.current);
+    seekFlashTimerRef.current = setTimeout(() => {
+      setSeekFlash((prev) => ({ ...prev, visible: false }));
+    }, 1200);
+
+    setTimeout(() => {
+      isContinuousSeekingRef.current = false;
+      pressStreakRef.current = 0;
+    }, 200);
+  }, [player, saveCurrentProgress]);
+
+  // Avanço e Retrocesso Contínuos e Acelerados ao Segurar os Botões no Controle Remoto da TV ou Touch
   const startContinuousSeek = (direction: 'fwd' | 'rwd') => {
     if (durationRef.current <= 0) return;
     if (continuousSeekTimerRef.current) clearTimeout(continuousSeekTimerRef.current);
@@ -549,7 +584,7 @@ export default function TVPlayerScreen() {
     isContinuousSeekingRef.current = true;
     continuousTicksRef.current = 0;
     continuousStartPosRef.current = currentTimeRef.current;
-    continuousTargetRef.current = currentTimeRef.current;
+    accumulatedSeekSecRef.current = currentTimeRef.current;
     resetHideTimer();
 
     // Loop rápido a cada 90ms com avanço progressivo acelerado
@@ -558,17 +593,18 @@ export default function TVPlayerScreen() {
       const ticks = continuousTicksRef.current;
 
       // Aceleração progressiva veloz:
-      // Ticks 1..5 (~0.5s): 15s por tick (~160s/s)
-      // Ticks 6..15 (~1.4s): 30s por tick (~330s/s)
-      // Ticks 16..30 (~2.7s): 60s por tick (~660s/s)
-      // Ticks > 30: 120s por tick (~1300s/s)
+      // Ticks 1..4 (~0.4s): 15s por tick
+      // Ticks 5..12 (~1.1s): 35s por tick
+      // Ticks 13..24 (~2.2s): 75s por tick
+      // Ticks > 24: 150s por tick (~1600s/s)
       let step = 15;
-      if (ticks > 30) step = 120;
-      else if (ticks > 15) step = 60;
-      else if (ticks > 5) step = 30;
+      if (ticks > 24) step = 150;
+      else if (ticks > 12) step = 75;
+      else if (ticks > 4) step = 35;
 
       const delta = direction === 'fwd' ? step : -step;
-      const newTarget = Math.max(0, Math.min(durationRef.current, continuousTargetRef.current + delta));
+      const newTarget = Math.max(0, Math.min(durationRef.current, accumulatedSeekSecRef.current + delta));
+      accumulatedSeekSecRef.current = newTarget;
       continuousTargetRef.current = newTarget;
 
       setCurrentTime(newTarget);
@@ -590,10 +626,10 @@ export default function TVPlayerScreen() {
     if (continuousSeekTimerRef.current) clearTimeout(continuousSeekTimerRef.current);
     if (continuousSeekIntervalRef.current) clearInterval(continuousSeekIntervalRef.current);
 
-    // Se segurado por mais de 220ms, engata avanço contínuo rápido
+    // Se segurado por mais de 180ms, engata avanço contínuo rápido
     continuousSeekTimerRef.current = setTimeout(() => {
       startContinuousSeek(direction);
-    }, 220);
+    }, 180);
   };
 
   const handleSeekLongPress = (direction: 'fwd' | 'rwd') => {
@@ -614,37 +650,68 @@ export default function TVPlayerScreen() {
     }
 
     if (isContinuousSeekingRef.current) {
-      const finalTarget = continuousTargetRef.current;
-      if (player && durationRef.current > 0) {
-        player.currentTime = finalTarget;
-        setCurrentTime(finalTarget);
-        currentTimeRef.current = finalTarget;
-        saveCurrentProgress();
-      }
-
-      setSeekFlash({
-        visible: true,
-        type: direction,
-        label: `${direction === 'fwd' ? '▶' : '◀'} ${formatTime(finalTarget)}`,
-      });
-
-      if (seekFlashTimerRef.current) clearTimeout(seekFlashTimerRef.current);
-      seekFlashTimerRef.current = setTimeout(() => {
-        setSeekFlash((prev) => ({ ...prev, visible: false }));
-      }, 1500);
-
-      resetHideTimer();
-
-      // Mantém a flag por 200ms para impedir duplo disparo do onPress
-      setTimeout(() => {
-        isContinuousSeekingRef.current = false;
-      }, 200);
+      commitAccumulatedSeek();
     }
   };
 
+  // Disparo do clique no controle remoto da TV: detecta key-repeat e acelera progressivamente
   const handleCircularBtnPress = (offsetSec: number) => {
-    if (isContinuousSeekingRef.current) return;
-    handleSeek(offsetSec);
+    if (durationRef.current <= 0) return;
+    const now = Date.now();
+    const timeDiff = now - lastPressTimeRef.current;
+    lastPressTimeRef.current = now;
+    const isFwd = offsetSec > 0;
+
+    // Se o usuário estiver segurando a tecla no controle remoto da TV,
+    // o Android emite eventos de repetição com intervalo entre 70ms e 400ms:
+    if (timeDiff < 450 && pressStreakRef.current > 0) {
+      pressStreakRef.current += 1;
+    } else {
+      pressStreakRef.current = 1;
+      accumulatedSeekSecRef.current = currentTimeRef.current;
+      continuousStartPosRef.current = currentTimeRef.current;
+    }
+
+    const streak = pressStreakRef.current;
+
+    // Aceleração progressiva dinâmica no controle remoto da TV:
+    let step = 10;
+    if (streak > 24) {
+      step = 150; // Acima de ~2.5s segurando tecla: pula 2.5 minutos por pulso
+    } else if (streak > 14) {
+      step = 80;  // Acima de ~1.5s: pula 1m 20s por pulso
+    } else if (streak > 7) {
+      step = 40;  // Acima de ~0.8s: pula 40s por pulso
+    } else if (streak > 2) {
+      step = 20;  // Segundo e terceiro pulsos rápidos: 20s
+    } else {
+      step = 10;  // Clique inicial isolado: 10s padrão
+    }
+
+    const delta = isFwd ? step : -step;
+    const newTarget = Math.max(0, Math.min(durationRef.current, accumulatedSeekSecRef.current + delta));
+    accumulatedSeekSecRef.current = newTarget;
+    continuousTargetRef.current = newTarget;
+    isContinuousSeekingRef.current = true;
+
+    // Atualização visual instantânea em tempo real (sem engasgar decoder de vídeo)
+    setCurrentTime(newTarget);
+    currentTimeRef.current = newTarget;
+
+    const totalDiff = Math.round(newTarget - continuousStartPosRef.current);
+    setSeekFlash({
+      visible: true,
+      type: isFwd ? 'fwd' : 'rwd',
+      label: `${isFwd ? '⏩' : '⏪'} ${formatOffsetLabel(totalDiff)} (${formatTime(newTarget)})`,
+    });
+
+    resetHideTimer();
+
+    // Debounce do commit ao player: aplica ao soltar o botão do controle remoto
+    if (seekCommitDebounceRef.current) clearTimeout(seekCommitDebounceRef.current);
+    seekCommitDebounceRef.current = setTimeout(() => {
+      commitAccumulatedSeek();
+    }, 320);
   };
 
   // Limpeza de timers ao desmontar o componente
@@ -652,6 +719,7 @@ export default function TVPlayerScreen() {
     return () => {
       if (continuousSeekTimerRef.current) clearTimeout(continuousSeekTimerRef.current);
       if (continuousSeekIntervalRef.current) clearInterval(continuousSeekIntervalRef.current);
+      if (seekCommitDebounceRef.current) clearTimeout(seekCommitDebounceRef.current);
       if (seekFlashTimerRef.current) clearTimeout(seekFlashTimerRef.current);
     };
   }, []);

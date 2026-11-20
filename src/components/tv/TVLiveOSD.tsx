@@ -25,13 +25,19 @@ interface TVLiveOSDProps {
   onSelectChannel: (channel: LiveChannel) => void;
   favoriteIds: number[];
   onToggleFavorite: (channel: LiveChannel) => void;
-  isZappingBannerOpen: boolean;
+  isOverlayOpen: boolean;
+  onCloseOverlay: () => void;
   currentEpg?: EpgProgram | null;
+  epgList?: EpgProgram[];
   onExitToHome: () => void;
   onPreviousChannel?: () => void;
   onNextChannel?: () => void;
   onOpenDrawer?: () => void;
-  initialBannerFocus?: 'prev' | 'guide' | 'next';
+  isPlaying?: boolean;
+  onTogglePlayPause?: () => void;
+  contentFit?: 'contain' | 'cover' | 'fill';
+  onToggleContentFit?: () => void;
+  onResetOverlayTimer?: () => void;
 }
 
 export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
@@ -45,15 +51,22 @@ export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
   onSelectChannel,
   favoriteIds,
   onToggleFavorite,
-  isZappingBannerOpen,
+  isOverlayOpen,
+  onCloseOverlay,
   currentEpg,
+  epgList = [],
   onExitToHome,
   onPreviousChannel,
   onNextChannel,
   onOpenDrawer,
-  initialBannerFocus = 'guide',
+  isPlaying = true,
+  onTogglePlayPause,
+  contentFit = 'contain',
+  onToggleContentFit,
+  onResetOverlayTimer,
 }) => {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [showEpgModal, setShowEpgModal] = useState(false);
   const [previewChannel, setPreviewChannel] = useState<LiveChannel | null>(activeChannel);
   const channelsListRef = useRef<FlatList>(null);
   const categoryListRef = useRef<FlatList>(null);
@@ -326,90 +339,321 @@ export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
     );
   }
 
-  // Zapping Banner Inferior (quando a gaveta está fechada e o canal é trocado)
-  if (isZappingBannerOpen && activeChannel) {
-    const isFav = favoriteIds.includes(activeChannel.stream_id);
+  const isFav = activeChannel ? favoriteIds.includes(activeChannel.stream_id) : false;
 
-    return (
-      <View style={styles.zappingContainer} pointerEvents="box-none">
-        <LinearGradient
-          colors={['transparent', 'rgba(6, 6, 8, 0.95)']}
-          style={styles.zappingGradient}
-        >
-          <View style={styles.zappingCard}>
-            {/* Logo do Canal */}
-            <View style={styles.zappingLogoContainer}>
+  return (
+    <>
+      {/* Overlay do Player de TV ao Vivo (Conforme imagens de referência) */}
+      {isOverlayOpen && !isDrawerOpen && activeChannel && (
+        <View style={styles.overlayContainer} pointerEvents="box-none">
+          {/* 1. Barra Superior com Gradiente */}
+          <LinearGradient
+            colors={['rgba(5, 7, 12, 0.95)', 'rgba(5, 7, 12, 0.65)', 'transparent']}
+            style={styles.overlayTopGradient}
+            pointerEvents="box-none"
+          >
+            <View style={styles.overlayTopBar}>
+              {/* Botão Voltar (<) */}
+              <Pressable
+                focusable={true}
+                onPress={onCloseOverlay}
+                style={({ focused }: any) => [
+                  styles.overlayCircleBtn,
+                  focused && styles.overlayFocusedControlBtn,
+                ]}
+              >
+                {({ focused }: any) => (
+                  <Ionicons
+                    name="chevron-back"
+                    size={24}
+                    color={focused ? '#070A12' : '#FFFFFF'}
+                  />
+                )}
+              </Pressable>
+
+              {/* Informações do Canal */}
+              <View style={styles.overlayHeaderInfo}>
+                <Text style={styles.overlayChannelName} numberOfLines={1}>
+                  {activeChannel.name}
+                </Text>
+                <Text style={styles.overlaySubtitle} numberOfLines={1}>
+                  Ao vivo • {currentEpg?.title || 'Programação Ao Vivo Contínua'}
+                </Text>
+              </View>
+
+              {/* Botão de Formato de Tela / Aspect Ratio [▭] */}
+              <Pressable
+                focusable={true}
+                onPress={() => {
+                  onToggleContentFit?.();
+                  onResetOverlayTimer?.();
+                }}
+                style={({ focused }: any) => [
+                  styles.overlayCircleBtn,
+                  focused && styles.overlayFocusedControlBtn,
+                ]}
+              >
+                {({ focused }: any) => (
+                  <Ionicons
+                    name="tv-outline"
+                    size={22}
+                    color={focused ? '#070A12' : '#FFFFFF'}
+                  />
+                )}
+              </Pressable>
+            </View>
+          </LinearGradient>
+
+          {/* 2. Controles Centrais de Reprodução: [|<]  [|| / >]  [>|] */}
+          <View style={styles.overlayCenterControls} pointerEvents="box-none">
+            {/* Canal Anterior [|<] */}
+            <Pressable
+              focusable={true}
+              onPress={() => {
+                onPreviousChannel?.();
+                onResetOverlayTimer?.();
+              }}
+              style={({ focused }: any) => [
+                styles.overlayCenterSideBtn,
+                focused && styles.overlayFocusedControlBtn,
+              ]}
+            >
+              {({ focused }: any) => (
+                <Ionicons
+                  name="play-skip-back"
+                  size={26}
+                  color={focused ? '#070A12' : '#FFFFFF'}
+                />
+              )}
+            </Pressable>
+
+            {/* Play/Pause Central Gigante (Foco TV Inicial) */}
+            <Pressable
+              focusable={true}
+              hasTVPreferredFocus={true}
+              onPress={() => {
+                onTogglePlayPause?.();
+                onResetOverlayTimer?.();
+              }}
+              style={({ focused }: any) => [
+                styles.overlayCenterPlayPauseBtn,
+                focused && styles.overlayFocusedPlayPauseBtn,
+              ]}
+            >
+              {({ focused }: any) => (
+                <Ionicons
+                  name={isPlaying ? 'pause' : 'play'}
+                  size={40}
+                  color={focused ? '#070A12' : '#FFFFFF'}
+                  style={!isPlaying ? { marginLeft: 4 } : undefined}
+                />
+              )}
+            </Pressable>
+
+            {/* Próximo Canal [>|] */}
+            <Pressable
+              focusable={true}
+              onPress={() => {
+                onNextChannel?.();
+                onResetOverlayTimer?.();
+              }}
+              style={({ focused }: any) => [
+                styles.overlayCenterSideBtn,
+                focused && styles.overlayFocusedControlBtn,
+              ]}
+            >
+              {({ focused }: any) => (
+                <Ionicons
+                  name="play-skip-forward"
+                  size={26}
+                  color={focused ? '#070A12' : '#FFFFFF'}
+                />
+              )}
+            </Pressable>
+          </View>
+
+          {/* 3. Barra Inferior com Gradiente: Barra Laranja + 3 Pílulas + Marca d'Água */}
+          <LinearGradient
+            colors={['transparent', 'rgba(5, 7, 12, 0.75)', 'rgba(5, 7, 12, 0.96)']}
+            style={styles.overlayBottomGradient}
+            pointerEvents="box-none"
+          >
+            {/* Linha Amarela/Laranja com "Ao vivo" */}
+            <View style={styles.overlayLiveLineRow}>
+              <View style={styles.overlayLiveLine} />
+              <Text style={styles.overlayLiveLineText}>Ao vivo</Text>
+            </View>
+
+            {/* Pílulas Inferiores Centralizadas */}
+            <View style={styles.overlayBottomRow}>
+              <View style={styles.overlayPillsGroup}>
+                <LivePillButton
+                  icon="list"
+                  label="Canais"
+                  onPress={() => {
+                    onOpenDrawer?.();
+                  }}
+                />
+                <LivePillButton
+                  icon="calendar-outline"
+                  label="Programação"
+                  onPress={() => {
+                    setShowEpgModal(true);
+                  }}
+                />
+                <LivePillButton
+                  icon={isFav ? 'star' : 'star-outline'}
+                  iconColor={isFav ? '#FFA000' : '#FFFFFF'}
+                  label={isFav ? 'Favoritado' : 'Favoritar'}
+                  onPress={() => {
+                    if (activeChannel) onToggleFavorite(activeChannel);
+                    onResetOverlayTimer?.();
+                  }}
+                />
+              </View>
+
+              {/* Marca d'água da Emissora (Canto inferior direito) */}
               {activeChannel.stream_icon ? (
                 <Image
                   source={{ uri: activeChannel.stream_icon }}
-                  style={styles.zappingLogo}
+                  style={styles.overlayWatermarkLogo}
                   contentFit="contain"
                 />
               ) : (
-                <Ionicons name="tv" size={32} color="#FFF" />
+                <View style={styles.overlayWatermarkPlaceholder}>
+                  <Ionicons name="tv-outline" size={26} color="rgba(255,255,255,0.3)" />
+                </View>
               )}
             </View>
+          </LinearGradient>
+        </View>
+      )}
 
-            {/* Informações Principais */}
-            <View style={styles.zappingInfo}>
-              <View style={styles.zappingHeaderRow}>
-                <View style={styles.livePill}>
-                  <View style={styles.liveDot} />
-                  <Text style={styles.livePillText}>AO VIVO</Text>
+      {/* Modal de Programação Completa (EPG) */}
+      <Modal
+        visible={showEpgModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowEpgModal(false)}
+      >
+        <View style={styles.epgModalBackdrop}>
+          <View style={styles.epgModalCard}>
+            <View style={styles.epgModalHeader}>
+              <View style={styles.epgModalHeaderInfo}>
+                <Ionicons name="calendar" size={24} color={colors.primaryAmber} style={{ marginRight: 10 }} />
+                <View>
+                  <Text style={styles.epgModalTitle}>Programação</Text>
+                  <Text style={styles.epgModalSubtitle} numberOfLines={1}>
+                    {activeChannel?.name || 'Canal'}
+                  </Text>
                 </View>
-                <Text style={styles.channelQualityBadge}>FHD 1080P</Text>
-                {isFav && <Ionicons name="star" size={14} color="#FFA000" style={{ marginLeft: 6 }} />}
               </View>
 
-              <Text style={styles.zappingChannelName} numberOfLines={1}>
-                {activeChannel.name}
-              </Text>
-
-              {/* Programa Atual / EPG */}
-              <View style={styles.zappingEpgRow}>
-                <Ionicons name="play-forward-outline" size={13} color="#FFA000" />
-                <Text style={styles.zappingEpgTitle} numberOfLines={1}>
-                  {currentEpg?.title || 'Programação Ao Vivo Contínua'}
-                </Text>
-                {currentEpg?.end && (
-                  <Text style={styles.zappingEpgTime}>• até {currentEpg.end}</Text>
+              <Pressable
+                focusable={true}
+                hasTVPreferredFocus={true}
+                onPress={() => setShowEpgModal(false)}
+                style={({ focused }: any) => [
+                  styles.epgCloseBtn,
+                  focused && styles.focusedButton,
+                ]}
+              >
+                {({ focused }: any) => (
+                  <Ionicons name="close" size={20} color={focused ? '#070A12' : '#FFF'} />
                 )}
-              </View>
+              </Pressable>
             </View>
 
-            {/* Ações Rápidas OSD: Guia (OK) e Favorito */}
-            <View style={styles.zappingActions}>
-              <OSDActionButton
-                key="zapping-btn-guide"
-                icon="list"
-                label="Guia (OK)"
-                variant="zapping"
-                hasPreferredFocus={true}
-                onPress={onOpenDrawer}
-              />
-              <OSDActionButton
-                key="zapping-btn-fav"
-                icon={isFav ? 'star' : 'star-outline'}
-                iconColor={isFav ? '#FFA000' : '#FFF'}
-                label="Favorito"
-                variant="zapping"
-                hasPreferredFocus={false}
-                onPress={() => onToggleFavorite(activeChannel)}
-              />
-            </View>
+            <FlatList
+              data={epgList && epgList.length > 0 ? epgList : currentEpg ? [currentEpg] : []}
+              keyExtractor={(item, idx) => `${item.id || idx}-${item.start || idx}`}
+              contentContainerStyle={styles.epgModalListContent}
+              renderItem={({ item, index }) => (
+                <View style={[styles.epgModalItem, index === 0 && styles.epgModalItemCurrent]}>
+                  <View style={styles.epgModalTimeCol}>
+                    <Text style={styles.epgModalTimeText}>
+                      {item.start ? `${item.start} - ${item.end}` : 'Ao vivo'}
+                    </Text>
+                    {index === 0 && (
+                      <View style={styles.epgModalNowBadge}>
+                        <Text style={styles.epgModalNowText}>NO AR</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.epgModalDetailsCol}>
+                    <Text style={styles.epgModalItemTitle} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                    {item.description ? (
+                      <Text style={styles.epgModalItemDesc} numberOfLines={2}>
+                        {item.description}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              )}
+              ListEmptyComponent={
+                <View style={styles.epgEmptyBox}>
+                  <Ionicons name="information-circle-outline" size={36} color="#8E8E93" />
+                  <Text style={styles.epgEmptyTitle}>Programação não disponível</Text>
+                  <Text style={styles.epgEmptySubtitle}>
+                    O servidor IPTV não possui guia detalhado para este canal no momento.
+                  </Text>
+                </View>
+              }
+            />
           </View>
-
-          {/* Dicas de Zapping */}
-          <Text style={styles.zappingDpadHint}>
-            ▲ Canal Anterior • ▼ Próximo Canal • OK Abrir Menu de Canais • Voltar Fechar
-          </Text>
-        </LinearGradient>
-      </View>
-    );
-  }
-
-  return null;
+        </View>
+      </Modal>
+    </>
+  );
 };
+
+// Botão Pílula Inferior (Canais, Programação, Favoritar - Conforme fotos do usuário)
+function LivePillButton({
+  icon,
+  iconColor,
+  label,
+  hasPreferredFocus,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  iconColor?: string;
+  label: string;
+  hasPreferredFocus?: boolean;
+  onPress: () => void;
+}) {
+  const [isFocused, setIsFocused] = useState(false);
+
+  return (
+    <Pressable
+      focusable={true}
+      hasTVPreferredFocus={hasPreferredFocus}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
+      onPress={onPress}
+      style={[
+        styles.overlayPillBtn,
+        isFocused && styles.overlayPillBtnFocused,
+      ]}
+    >
+      <Ionicons
+        name={icon}
+        size={18}
+        color={isFocused ? '#070A12' : iconColor || '#FFFFFF'}
+        style={{ marginRight: 8 }}
+      />
+      <Text
+        style={[
+          styles.overlayPillBtnText,
+          isFocused && styles.overlayPillBtnTextFocused,
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
 
 // Item de Categoria
 function CategoryListItem({
@@ -1052,5 +1296,283 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 8,
     letterSpacing: 0.3,
+  },
+
+  // Live Player Overlay (Fotos de Referência)
+  overlayContainer: {
+    ...StyleSheet.absoluteFill,
+    justifyContent: 'space-between',
+    zIndex: 85,
+  },
+  overlayTopGradient: {
+    paddingTop: 24,
+    paddingBottom: 40,
+    paddingHorizontal: 28,
+  },
+  overlayTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  overlayCircleBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(20, 24, 34, 0.75)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  overlayFocusedControlBtn: {
+    backgroundColor: colors.primary, // #00E5FF
+    borderColor: '#FFFFFF',
+    borderWidth: 2.5,
+    transform: [{ scale: 1.12 }],
+    elevation: 12,
+  },
+  overlayHeaderInfo: {
+    flex: 1,
+    marginHorizontal: 16,
+  },
+  overlayChannelName: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  overlaySubtitle: {
+    color: colors.primaryAmber, // #FFA000
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  overlayCenterControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+  },
+  overlayCenterSideBtn: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: 'rgba(20, 24, 34, 0.8)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  overlayCenterPlayPauseBtn: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    backgroundColor: 'rgba(20, 24, 34, 0.88)',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.28)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 28,
+  },
+  overlayFocusedPlayPauseBtn: {
+    backgroundColor: colors.primary, // #00E5FF
+    borderColor: '#FFFFFF',
+    borderWidth: 3.5,
+    transform: [{ scale: 1.15 }],
+    elevation: 18,
+  },
+  overlayBottomGradient: {
+    paddingHorizontal: 28,
+    paddingTop: 30,
+    paddingBottom: 22,
+  },
+  overlayLiveLineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  overlayLiveLine: {
+    flex: 1,
+    height: 3,
+    backgroundColor: '#FF9800',
+    borderRadius: 2,
+  },
+  overlayLiveLineText: {
+    color: '#FF9800',
+    fontSize: 13,
+    fontWeight: 'bold',
+    marginLeft: 12,
+  },
+  overlayBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  overlayPillsGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  overlayPillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(28, 34, 48, 0.85)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+  },
+  overlayPillBtnFocused: {
+    backgroundColor: colors.primary, // #00E5FF
+    borderColor: '#FFFFFF',
+    borderWidth: 2.5,
+    transform: [{ scale: 1.08 }],
+    elevation: 10,
+  },
+  overlayPillBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  overlayPillBtnTextFocused: {
+    color: '#070A12',
+    fontWeight: '900',
+  },
+  overlayWatermarkLogo: {
+    position: 'absolute',
+    right: 0,
+    bottom: 2,
+    width: 54,
+    height: 54,
+    opacity: 0.85,
+  },
+  overlayWatermarkPlaceholder: {
+    position: 'absolute',
+    right: 0,
+    bottom: 2,
+    width: 54,
+    height: 54,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // EPG Modal Styles
+  epgModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  epgModalCard: {
+    width: '80%',
+    maxHeight: '80%',
+    backgroundColor: '#0E1322',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#1E2845',
+    padding: 24,
+  },
+  epgModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E2845',
+    marginBottom: 16,
+  },
+  epgModalHeaderInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  epgModalTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  epgModalSubtitle: {
+    color: '#94A3B8',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  epgCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#1E2845',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  epgModalListContent: {
+    gap: 12,
+  },
+  epgModalItem: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  epgModalItemCurrent: {
+    borderColor: colors.primaryAmber,
+    backgroundColor: 'rgba(255, 160, 0, 0.08)',
+  },
+  epgModalTimeCol: {
+    width: 130,
+  },
+  epgModalTimeText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  epgModalNowBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primaryAmber,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 4,
+  },
+  epgModalNowText: {
+    color: '#070A12',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  epgModalDetailsCol: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  epgModalItemTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  epgModalItemDesc: {
+    color: '#8E8E93',
+    fontSize: 12,
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  epgEmptyBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 36,
+  },
+  epgEmptyTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: 'bold',
+    marginTop: 10,
+  },
+  epgEmptySubtitle: {
+    color: '#8E8E93',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
+    maxWidth: 320,
   },
 });
