@@ -346,133 +346,30 @@ export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
       {/* Overlay do Player de TV ao Vivo (Conforme imagens de referência) */}
       {isOverlayOpen && !isDrawerOpen && activeChannel && (
         <View style={styles.overlayContainer} pointerEvents="box-none">
-          {/* 1. Barra Superior com Gradiente */}
+          {/* 1. Barra Superior com Informações do Canal em Fundo Escuro (Imagem 4) */}
           <LinearGradient
             colors={['rgba(5, 7, 12, 0.95)', 'rgba(5, 7, 12, 0.65)', 'transparent']}
             style={styles.overlayTopGradient}
             pointerEvents="box-none"
           >
             <View style={styles.overlayTopBar}>
-              {/* Botão Voltar (<) */}
-              <Pressable
-                focusable={true}
-                onPress={onCloseOverlay}
-                style={({ focused }: any) => [
-                  styles.overlayCircleBtn,
-                  focused && styles.overlayFocusedControlBtn,
-                ]}
-              >
-                {({ focused }: any) => (
-                  <Ionicons
-                    name="chevron-back"
-                    size={24}
-                    color={focused ? '#070A12' : '#FFFFFF'}
-                  />
-                )}
-              </Pressable>
-
-              {/* Informações do Canal */}
-              <View style={styles.overlayHeaderInfo}>
+              {/* Informações do Canal com Fundo Escuro de Alta Legibilidade (Imagem 4) */}
+              <View style={styles.channelInfoDarkCard}>
+                <View style={styles.channelInfoHeaderRow}>
+                  <View style={styles.liveIndicatorDot} />
+                  <Text style={styles.liveIndicatorText}>AO VIVO</Text>
+                </View>
                 <Text style={styles.overlayChannelName} numberOfLines={1}>
                   {activeChannel.name}
                 </Text>
-                <Text style={styles.overlaySubtitle} numberOfLines={1}>
-                  Ao vivo • {currentEpg?.title || 'Programação Ao Vivo Contínua'}
+                <Text style={styles.overlaySubtitle} numberOfLines={2}>
+                  {currentEpg?.title ? `Ao vivo • ${currentEpg.title}` : 'Programação Ao Vivo Contínua'}
                 </Text>
               </View>
-
-              {/* Botão de Formato de Tela / Aspect Ratio [▭] */}
-              <Pressable
-                focusable={true}
-                onPress={() => {
-                  onToggleContentFit?.();
-                  onResetOverlayTimer?.();
-                }}
-                style={({ focused }: any) => [
-                  styles.overlayCircleBtn,
-                  focused && styles.overlayFocusedControlBtn,
-                ]}
-              >
-                {({ focused }: any) => (
-                  <Ionicons
-                    name="tv-outline"
-                    size={22}
-                    color={focused ? '#070A12' : '#FFFFFF'}
-                  />
-                )}
-              </Pressable>
             </View>
           </LinearGradient>
 
-          {/* 2. Controles Centrais de Reprodução: [|<]  [|| / >]  [>|] */}
-          <View style={styles.overlayCenterControls} pointerEvents="box-none">
-            {/* Canal Anterior [|<] */}
-            <Pressable
-              focusable={true}
-              onPress={() => {
-                onPreviousChannel?.();
-                onResetOverlayTimer?.();
-              }}
-              style={({ focused }: any) => [
-                styles.overlayCenterSideBtn,
-                focused && styles.overlayFocusedControlBtn,
-              ]}
-            >
-              {({ focused }: any) => (
-                <Ionicons
-                  name="play-skip-back"
-                  size={26}
-                  color={focused ? '#070A12' : '#FFFFFF'}
-                />
-              )}
-            </Pressable>
-
-            {/* Play/Pause Central Gigante (Foco TV Inicial) */}
-            <Pressable
-              focusable={true}
-              hasTVPreferredFocus={true}
-              onPress={() => {
-                onTogglePlayPause?.();
-                onResetOverlayTimer?.();
-              }}
-              style={({ focused }: any) => [
-                styles.overlayCenterPlayPauseBtn,
-                focused && styles.overlayFocusedPlayPauseBtn,
-              ]}
-            >
-              {({ focused }: any) => (
-                <Ionicons
-                  name={isPlaying ? 'pause' : 'play'}
-                  size={40}
-                  color={focused ? '#070A12' : '#FFFFFF'}
-                  style={!isPlaying ? { marginLeft: 4 } : undefined}
-                />
-              )}
-            </Pressable>
-
-            {/* Próximo Canal [>|] */}
-            <Pressable
-              focusable={true}
-              onPress={() => {
-                onNextChannel?.();
-                onResetOverlayTimer?.();
-              }}
-              style={({ focused }: any) => [
-                styles.overlayCenterSideBtn,
-                focused && styles.overlayFocusedControlBtn,
-              ]}
-            >
-              {({ focused }: any) => (
-                <Ionicons
-                  name="play-skip-forward"
-                  size={26}
-                  color={focused ? '#070A12' : '#FFFFFF'}
-                />
-              )}
-            </Pressable>
-          </View>
-
-          {/* 3. Barra Inferior com Gradiente: Barra Laranja + 3 Pílulas + Marca d'Água */}
+          {/* 2. Barra Inferior com Gradiente: Linha Laranja + 3 Pílulas + Marca d'Água */}
           <LinearGradient
             colors={['transparent', 'rgba(5, 7, 12, 0.75)', 'rgba(5, 7, 12, 0.96)']}
             style={styles.overlayBottomGradient}
@@ -490,6 +387,7 @@ export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
                 <LivePillButton
                   icon="list"
                   label="Canais"
+                  hasPreferredFocus={true}
                   onPress={() => {
                     onOpenDrawer?.();
                   }}
@@ -1311,29 +1209,33 @@ const styles = StyleSheet.create({
   },
   overlayTopBar: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
-  overlayCircleBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(20, 24, 34, 0.75)',
+  channelInfoDarkCard: {
+    backgroundColor: 'rgba(5, 7, 14, 0.94)',
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.18)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  overlayFocusedControlBtn: {
-    backgroundColor: colors.primary, // #00E5FF
-    borderColor: '#FFFFFF',
-    borderWidth: 2.5,
-    transform: [{ scale: 1.12 }],
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    maxWidth: '75%',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.9,
+    shadowRadius: 10,
     elevation: 12,
   },
-  overlayHeaderInfo: {
-    flex: 1,
-    marginHorizontal: 16,
+  channelInfoHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  liveIndicatorText: {
+    color: '#E52D27',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    marginLeft: 6,
   },
   overlayChannelName: {
     color: '#FFFFFF',

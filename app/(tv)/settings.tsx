@@ -440,16 +440,31 @@ export default function TVSettingsScreen() {
             ]}
             onPress={() => handleOpenListManager('favorites')}
           >
-            <View style={[styles.tileIconCircle, { backgroundColor: 'rgba(255, 215, 0, 0.15)' }]}>
-              <Ionicons name="star" size={24} color="#FFD700" />
-            </View>
-            <View style={styles.tileTextContainer}>
-              <Text style={styles.tileTitle}>⭐ Meus Favoritos</Text>
-              <Text style={styles.tileSub}>Canais, Filmes e Séries</Text>
-            </View>
-            <View style={styles.tileBadge}>
-              <Text style={styles.tileBadgeText}>{totalFavoritesCount}</Text>
-            </View>
+            {({ focused }: any) => (
+              <>
+                <View
+                  style={[
+                    styles.tileIconCircle,
+                    { backgroundColor: focused ? 'rgba(7, 10, 18, 0.2)' : 'rgba(255, 215, 0, 0.15)' },
+                  ]}
+                >
+                  <Ionicons name="star" size={24} color={focused ? '#070A12' : '#FFD700'} />
+                </View>
+                <View style={styles.tileTextContainer}>
+                  <Text style={[styles.tileTitle, focused && styles.tileTitleFocused]}>
+                    ⭐ Meus Favoritos
+                  </Text>
+                  <Text style={[styles.tileSub, focused && styles.tileSubFocused]}>
+                    Canais, Filmes e Séries
+                  </Text>
+                </View>
+                <View style={[styles.tileBadge, focused && styles.tileBadgeFocused]}>
+                  <Text style={[styles.tileBadgeText, focused && styles.tileBadgeTextFocused]}>
+                    {totalFavoritesCount}
+                  </Text>
+                </View>
+              </>
+            )}
           </Pressable>
 
           {/* Card Continuar Assistindo */}
@@ -461,16 +476,31 @@ export default function TVSettingsScreen() {
             ]}
             onPress={() => handleOpenListManager('continue')}
           >
-            <View style={[styles.tileIconCircle, { backgroundColor: 'rgba(0, 229, 255, 0.15)' }]}>
-              <Ionicons name="play-forward-circle" size={24} color="#00E5FF" />
-            </View>
-            <View style={styles.tileTextContainer}>
-              <Text style={styles.tileTitle}>▶ Continuar Assistindo</Text>
-              <Text style={styles.tileSub}>Histórico em andamento</Text>
-            </View>
-            <View style={styles.tileBadge}>
-              <Text style={styles.tileBadgeText}>{continueWatching.length}</Text>
-            </View>
+            {({ focused }: any) => (
+              <>
+                <View
+                  style={[
+                    styles.tileIconCircle,
+                    { backgroundColor: focused ? 'rgba(7, 10, 18, 0.2)' : 'rgba(0, 229, 255, 0.15)' },
+                  ]}
+                >
+                  <Ionicons name="play-forward-circle" size={24} color={focused ? '#070A12' : '#00E5FF'} />
+                </View>
+                <View style={styles.tileTextContainer}>
+                  <Text style={[styles.tileTitle, focused && styles.tileTitleFocused]}>
+                    ▶ Continuar Assistindo
+                  </Text>
+                  <Text style={[styles.tileSub, focused && styles.tileSubFocused]}>
+                    Histórico em andamento
+                  </Text>
+                </View>
+                <View style={[styles.tileBadge, focused && styles.tileBadgeFocused]}>
+                  <Text style={[styles.tileBadgeText, focused && styles.tileBadgeTextFocused]}>
+                    {continueWatching.length}
+                  </Text>
+                </View>
+              </>
+            )}
           </Pressable>
 
           {/* Card Minha Lista */}
@@ -482,16 +512,31 @@ export default function TVSettingsScreen() {
             ]}
             onPress={() => handleOpenListManager('mylist')}
           >
-            <View style={[styles.tileIconCircle, { backgroundColor: 'rgba(0, 168, 225, 0.15)' }]}>
-              <Ionicons name="bookmark" size={24} color={colors.primary} />
-            </View>
-            <View style={styles.tileTextContainer}>
-              <Text style={styles.tileTitle}>📑 Minha Lista</Text>
-              <Text style={styles.tileSub}>Títulos salvos na sua lista</Text>
-            </View>
-            <View style={styles.tileBadge}>
-              <Text style={styles.tileBadgeText}>{myList.length}</Text>
-            </View>
+            {({ focused }: any) => (
+              <>
+                <View
+                  style={[
+                    styles.tileIconCircle,
+                    { backgroundColor: focused ? 'rgba(7, 10, 18, 0.2)' : 'rgba(0, 168, 225, 0.15)' },
+                  ]}
+                >
+                  <Ionicons name="bookmark" size={24} color={focused ? '#070A12' : colors.primary} />
+                </View>
+                <View style={styles.tileTextContainer}>
+                  <Text style={[styles.tileTitle, focused && styles.tileTitleFocused]}>
+                    📑 Minha Lista
+                  </Text>
+                  <Text style={[styles.tileSub, focused && styles.tileSubFocused]}>
+                    Títulos salvos na sua lista
+                  </Text>
+                </View>
+                <View style={[styles.tileBadge, focused && styles.tileBadgeFocused]}>
+                  <Text style={[styles.tileBadgeText, focused && styles.tileBadgeTextFocused]}>
+                    {myList.length}
+                  </Text>
+                </View>
+              </>
+            )}
           </Pressable>
 
           {/* Card Assistir Depois */}
@@ -503,16 +548,31 @@ export default function TVSettingsScreen() {
             ]}
             onPress={() => handleOpenListManager('watchlater')}
           >
-            <View style={[styles.tileIconCircle, { backgroundColor: 'rgba(255, 159, 10, 0.15)' }]}>
-              <Ionicons name="time" size={24} color="#FF9F0A" />
-            </View>
-            <View style={styles.tileTextContainer}>
-              <Text style={styles.tileTitle}>🕒 Assistir Depois</Text>
-              <Text style={styles.tileSub}>Títulos para assistir mais tarde</Text>
-            </View>
-            <View style={styles.tileBadge}>
-              <Text style={styles.tileBadgeText}>{watchLater.length}</Text>
-            </View>
+            {({ focused }: any) => (
+              <>
+                <View
+                  style={[
+                    styles.tileIconCircle,
+                    { backgroundColor: focused ? 'rgba(7, 10, 18, 0.2)' : 'rgba(255, 159, 10, 0.15)' },
+                  ]}
+                >
+                  <Ionicons name="time" size={24} color={focused ? '#070A12' : '#FF9F0A'} />
+                </View>
+                <View style={styles.tileTextContainer}>
+                  <Text style={[styles.tileTitle, focused && styles.tileTitleFocused]}>
+                    🕒 Assistir Depois
+                  </Text>
+                  <Text style={[styles.tileSub, focused && styles.tileSubFocused]}>
+                    Títulos para assistir mais tarde
+                  </Text>
+                </View>
+                <View style={[styles.tileBadge, focused && styles.tileBadgeFocused]}>
+                  <Text style={[styles.tileBadgeText, focused && styles.tileBadgeTextFocused]}>
+                    {watchLater.length}
+                  </Text>
+                </View>
+              </>
+            )}
           </Pressable>
         </View>
       </View>
@@ -531,7 +591,6 @@ export default function TVSettingsScreen() {
               <Pressable
                 key={days}
                 focusable={true}
-                hasTVPreferredFocus={isSelected}
                 onPress={() => handleSelectReloadDays(days)}
                 style={({ focused }: any) => [
                   styles.reloadDayPill,
@@ -690,12 +749,18 @@ export default function TVSettingsScreen() {
                 focusable={true}
                 style={({ focused }: any) => [
                   styles.tvModalCloseBtn,
-                  focused && styles.tvBtnFocused,
+                  focused && styles.tvModalCloseBtnFocused,
                 ]}
                 onPress={() => setListManagerVisible(false)}
               >
-                <Ionicons name="close" size={20} color="#fff" />
-                <Text style={styles.tvModalCloseBtnText}>Fechar</Text>
+                {({ focused }: any) => (
+                  <>
+                    <Ionicons name="close" size={20} color={focused ? '#070A12' : '#fff'} />
+                    <Text style={[styles.tvModalCloseBtnText, focused && styles.tvModalCloseBtnTextFocused]}>
+                      Fechar
+                    </Text>
+                  </>
+                )}
               </Pressable>
             </View>
 
@@ -715,6 +780,7 @@ export default function TVSettingsScreen() {
                   <Pressable
                     key={tab}
                     focusable={true}
+                    hasTVPreferredFocus={isActive}
                     style={({ focused }: any) => [
                       styles.tvTabItem,
                       isActive && styles.tvTabItemActive,
@@ -722,14 +788,17 @@ export default function TVSettingsScreen() {
                     ]}
                     onPress={() => handleChangeTab(tab)}
                   >
-                    <Text
-                      style={[
-                        styles.tvTabText,
-                        isActive && styles.tvTabTextActive,
-                      ]}
-                    >
-                      {tabLabel}
-                    </Text>
+                    {({ focused }: any) => (
+                      <Text
+                        style={[
+                          styles.tvTabText,
+                          isActive && styles.tvTabTextActive,
+                          focused && styles.tvTabTextFocused,
+                        ]}
+                      >
+                        {tabLabel}
+                      </Text>
+                    )}
                   </Pressable>
                 );
               })}
@@ -767,14 +836,17 @@ export default function TVSettingsScreen() {
                     ]}
                     onPress={() => setCategoryFilter(cat)}
                   >
-                    <Text
-                      style={[
-                        styles.tvFilterChipText,
-                        isActive && styles.tvFilterChipTextActive,
-                      ]}
-                    >
-                      {label}
-                    </Text>
+                    {({ focused }: any) => (
+                      <Text
+                        style={[
+                          styles.tvFilterChipText,
+                          isActive && styles.tvFilterChipTextActive,
+                          focused && styles.tvFilterChipTextFocused,
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    )}
                   </Pressable>
                 );
               })}
@@ -839,8 +911,14 @@ export default function TVSettingsScreen() {
                         ]}
                         onPress={() => handlePlayListItem(item)}
                       >
-                        <Ionicons name="play" size={16} color="#000" />
-                        <Text style={styles.tvActionPlayBtnText}>Assistir</Text>
+                        {({ focused }: any) => (
+                          <>
+                            <Ionicons name="play" size={16} color={focused ? '#070A12' : '#000'} />
+                            <Text style={[styles.tvActionPlayBtnText, focused && styles.tvActionPlayBtnTextFocused]}>
+                              Assistir
+                            </Text>
+                          </>
+                        )}
                       </Pressable>
 
                       <Pressable
@@ -851,8 +929,14 @@ export default function TVSettingsScreen() {
                         ]}
                         onPress={() => handleRemoveListItem(listManagerTab, item)}
                       >
-                        <Ionicons name="trash-outline" size={16} color="#FF4D4F" />
-                        <Text style={styles.tvActionRemoveBtnText}>Remover</Text>
+                        {({ focused }: any) => (
+                          <>
+                            <Ionicons name="trash-outline" size={16} color={focused ? '#FFFFFF' : '#FF4D4F'} />
+                            <Text style={[styles.tvActionRemoveBtnText, focused && styles.tvActionRemoveBtnTextFocused]}>
+                              Remover
+                            </Text>
+                          </>
+                        )}
                       </Pressable>
                     </View>
                   </View>
@@ -1015,9 +1099,31 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   listManagerTileFocused: {
-    borderColor: colors.primary,
-    backgroundColor: 'rgba(0, 229, 255, 0.12)',
-    transform: [{ scale: 1.03 }],
+    backgroundColor: colors.primary,
+    borderColor: '#FFFFFF',
+    borderWidth: 3,
+    transform: [{ scale: 1.05 }],
+    elevation: 14,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.95,
+    shadowRadius: 10,
+  },
+  tileTitleFocused: {
+    color: '#070A12',
+    fontWeight: '900',
+  },
+  tileSubFocused: {
+    color: '#13192B',
+    fontWeight: '700',
+  },
+  tileBadgeFocused: {
+    backgroundColor: '#070A12',
+    borderColor: '#070A12',
+  },
+  tileBadgeTextFocused: {
+    color: '#FFFFFF',
+    fontWeight: '900',
   },
   tileIconCircle: {
     width: 44,
@@ -1106,9 +1212,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  tvBtnFocused: {
-    borderColor: colors.primary,
+  tvModalCloseBtnFocused: {
     backgroundColor: colors.primary,
+    borderColor: '#FFFFFF',
+    borderWidth: 2.5,
+    transform: [{ scale: 1.08 }],
+    elevation: 10,
+  },
+  tvModalCloseBtnTextFocused: {
+    color: '#070A12',
+    fontWeight: '900',
+  },
+  tvBtnFocused: {
+    borderColor: '#FFFFFF',
+    backgroundColor: colors.primary,
+    borderWidth: 2.5,
   },
   tvTabsRow: {
     flexDirection: 'row',
@@ -1128,8 +1246,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 229, 255, 0.15)',
   },
   tvTabItemFocused: {
-    borderColor: colors.focusRing,
-    transform: [{ scale: 1.05 }],
+    backgroundColor: colors.primary,
+    borderColor: '#FFFFFF',
+    borderWidth: 2.5,
+    transform: [{ scale: 1.08 }],
+    elevation: 12,
   },
   tvTabText: {
     color: '#8E99AF',
@@ -1137,7 +1258,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   tvTabTextActive: {
-    color: '#FFFFFF',
+    color: colors.primary,
+  },
+  tvTabTextFocused: {
+    color: '#070A12',
+    fontWeight: '900',
   },
   tvFilterRow: {
     flexDirection: 'row',
@@ -1157,8 +1282,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 229, 255, 0.2)',
   },
   tvChipFocused: {
-    borderColor: colors.focusRing,
-    transform: [{ scale: 1.06 }],
+    backgroundColor: colors.primary,
+    borderColor: '#FFFFFF',
+    borderWidth: 2.5,
+    transform: [{ scale: 1.08 }],
+    elevation: 10,
   },
   tvFilterChipText: {
     color: '#8E99AF',
@@ -1167,6 +1295,10 @@ const styles = StyleSheet.create({
   },
   tvFilterChipTextActive: {
     color: colors.primary,
+  },
+  tvFilterChipTextFocused: {
+    color: '#070A12',
+    fontWeight: '900',
   },
   tvItemsFlatList: {
     maxHeight: 380,
@@ -1242,12 +1374,19 @@ const styles = StyleSheet.create({
   },
   tvActionPlayBtnFocused: {
     backgroundColor: colors.primary,
-    transform: [{ scale: 1.05 }],
+    borderColor: '#FFFFFF',
+    borderWidth: 2.5,
+    transform: [{ scale: 1.08 }],
+    elevation: 10,
   },
   tvActionPlayBtnText: {
     color: '#000000',
     fontSize: 12,
     fontWeight: '800',
+  },
+  tvActionPlayBtnTextFocused: {
+    color: '#070A12',
+    fontWeight: '900',
   },
   tvActionRemoveBtn: {
     flexDirection: 'row',
@@ -1262,12 +1401,19 @@ const styles = StyleSheet.create({
   },
   tvActionRemoveBtnFocused: {
     backgroundColor: '#FF4D4F',
-    transform: [{ scale: 1.05 }],
+    borderColor: '#FFFFFF',
+    borderWidth: 2.5,
+    transform: [{ scale: 1.08 }],
+    elevation: 10,
   },
   tvActionRemoveBtnText: {
     color: '#FF4D4F',
     fontSize: 12,
     fontWeight: '700',
+  },
+  tvActionRemoveBtnTextFocused: {
+    color: '#FFFFFF',
+    fontWeight: '900',
   },
   tvEmptyBox: {
     paddingVertical: 48,
