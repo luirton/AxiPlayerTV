@@ -1,3 +1,5 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { storage } from './storage';
 import {
   XtreamAuthResponse,
   IptvCategory,
@@ -62,21 +64,85 @@ export class XtreamClient {
     return `${this.serverUrl}/player_api.php?username=${encodedUser}&password=${encodedPass}`;
   }
 
-  // Cache em memória de requisições para evitar OOM e re-download de 25MB+ de dados JSON em Smart TVs
+  // Cache em memória e persistente no disco para listas e categorias IPTV
   private static apiCache = new Map<string, { data: any; timestamp: number }>();
+
+  private static getCacheKey(url: string): string {
+    let hash = 0;
+    for (let i = 0; i < url.length; i++) {
+      hash = ((hash << 5) - hash) + url.charCodeAt(i);
+      hash |= 0;
+    }
+    return `@axi_playlist_cache_${Math.abs(hash)}`;
+  }
+
+  public static async clearPersistentCache(): Promise<void> {
+    XtreamClient.apiCache.clear();
+    try {
+      const allKeys = await AsyncStorage.getAllKeys();
+      const playlistKeys = allKeys.filter((k) => k.startsWith('@axi_playlist_cache_'));
+      if (playlistKeys.length > 0) {
+        await AsyncStorage.multiRemove(playlistKeys);
+      }
+    } catch (e) {
+      console.warn('Erro ao limpar cache persistente da lista IPTV:', e);
+    }
+  }
 
   public static clearCache(): void {
     XtreamClient.apiCache.clear();
+    XtreamClient.clearPersistentCache().catch(() => {});
   }
 
   /**
    * Executa requisições HTTP com User-Agent compatível com IPTV Smarters,
-   * timeout controlado, cache em memória e fallback automático de SSL/TLS (https <-> http).
+   * timeout controlado, cache inteligente por dias de seleção e fallback automático de SSL/TLS (https <-> http).
    */
   private async fetchJson<T>(url: string, timeoutMs: number = 20000): Promise<T> {
-    const cached = XtreamClient.apiCache.get(url);
-    if (cached && Date.now() - cached.timestamp < 10 * 60 * 1000) {
-      return cached.data as T;
+    const isPlaylistAction =
+      url.includes('action=get_live_categories') ||
+      url.includes('action=get_vod_categories') ||
+      url.includes('action=get_series_categories') ||
+      url.includes('action=get_live_streams') ||
+      url.includes('action=get_vod_streams') ||
+      url.includes('action=get_series');
+
+    const cacheKey = XtreamClient.getCacheKey(url);
+
+    // 1. Verifica cache em memória
+    const memCached = XtreamClient.apiCache.get(url);
+    if (memCached) {
+      if (isPlaylistAction) {
+        const isDue = await storage.isPlaylistReloadDue().catch(() => false);
+        if (!isDue) {
+          return memCached.data as T;
+        }
+      } else if (Date.now() - memCached.timestamp < 10 * 60 * 1000) {
+        return memCached.data as T;
+      }
+    }
+
+    // 2. Se for ação de playlist (categorias e canais), consulta cache persistente no disco (AsyncStorage)
+    let persistentData: T | null = null;
+    if (isPlaylistAction) {
+      try {
+        const rawJson = await AsyncStorage.getItem(cacheKey);
+        if (rawJson) {
+          const parsed = JSON.parse(rawJson);
+          if (parsed && parsed.data) {
+            persistentData = parsed.data as T;
+            XtreamClient.apiCache.set(url, { data: persistentData, timestamp: parsed.timestamp || Date.now() });
+
+            // Se o período de recarga (3 a 5 dias) ainda não venceu, retorna direto do cache sem usar rede!
+            const isDue = await storage.isPlaylistReloadDue().catch(() => false);
+            if (!isDue) {
+              return persistentData;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Falha ao ler cache persistente da lista IPTV:', err);
+      }
     }
 
     const controller = new AbortController();
@@ -98,6 +164,10 @@ export class XtreamClient {
       clearTimeout(timer);
 
       if (!response.ok) {
+        if (persistentData) {
+          console.warn(`[XtreamClient] HTTP ${response.status}. Usando cache persistente de fallback.`);
+          return persistentData;
+        }
         if (response.status === 401 || response.status === 403) {
           throw new Error('Acesso negado pelo servidor (403/401). Verifique usuário, senha ou validade da lista.');
         }
@@ -109,14 +179,24 @@ export class XtreamClient {
 
       const text = await response.text();
       if (!text || text.trim() === '') {
-        return [] as unknown as T;
+        return (persistentData || ([] as unknown as T)) as T;
       }
 
       try {
         const parsed = JSON.parse(text) as T;
         XtreamClient.apiCache.set(url, { data: parsed, timestamp: Date.now() });
+
+        // Salva persistentemente no disco se for ação de lista M3U/Xtream
+        if (isPlaylistAction && parsed) {
+          AsyncStorage.setItem(
+            cacheKey,
+            JSON.stringify({ data: parsed, timestamp: Date.now() })
+          ).catch((e) => console.warn('Erro ao salvar cache persistente:', e));
+        }
+
         return parsed;
       } catch (parseErr) {
+        if (persistentData) return persistentData;
         if (text.includes('<html') || text.includes('<!DOCTYPE') || text.includes('<head')) {
           throw new Error('O servidor respondeu com uma página web (HTML) em vez de dados JSON. Verifique a URL e porta do provedor.');
         }
@@ -124,6 +204,12 @@ export class XtreamClient {
       }
     } catch (err: any) {
       clearTimeout(timer);
+
+      // Se temos cache persistente e deu erro de conexão, usa o cache existente sem interrupção
+      if (persistentData) {
+        console.warn('[XtreamClient] Conexão falhou ao atualizar lista. Usando dados salvos em cache.');
+        return persistentData;
+      }
 
       // Fallback Inteligente de Protocolo:
       // Se deu erro de SSL/TLS ("Unable to parse TLS packet header" ou SSLException)

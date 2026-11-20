@@ -41,6 +41,16 @@ export default function TVLiveScreen() {
 
   const zappingTimerRef = useRef<any>(null);
   const centerFocusRef = useRef<any>(null);
+  const activeChannelRef = useRef<LiveChannel | null>(null);
+  const channelsRef = useRef<LiveChannel[]>([]);
+
+  useEffect(() => {
+    activeChannelRef.current = activeChannel;
+  }, [activeChannel]);
+
+  useEffect(() => {
+    channelsRef.current = channels;
+  }, [channels]);
 
   // Initialize expo-video player
   const player = useVideoPlayer(streamUrl, (p) => {
@@ -86,13 +96,20 @@ export default function TVLiveScreen() {
       allCategories.push(...cats);
       setCategories(allCategories);
 
-      // Restore last watched channel or fallback to first channel
+      // Restore last watched channel or fallback to first real channel category
       const lastChannel = await storage.getLastLiveChannel();
-      let initialCategory = allCategories[0] || null;
+      let initialCategory: IptvCategory | null = null;
 
-      if (lastChannel && lastChannel.category_id) {
-        const matchingCat = allCategories.find((c) => c.category_id === lastChannel.category_id);
+      if (lastChannel && lastChannel.category_id && lastChannel.category_id !== 'favorites') {
+        const matchingCat = cats.find((c) => String(c.category_id) === String(lastChannel.category_id));
         if (matchingCat) initialCategory = matchingCat;
+      }
+
+      // Se não encontrou categoria do último canal, inicia pela primeira categoria real (cats[0]) com todos os canais
+      if (!initialCategory && cats.length > 0) {
+        initialCategory = cats[0];
+      } else if (!initialCategory && allCategories.length > 0) {
+        initialCategory = allCategories[0];
       }
 
       setSelectedCategory(initialCategory);
@@ -100,6 +117,8 @@ export default function TVLiveScreen() {
       if (initialCategory) {
         await loadCategoryChannels(initialCategory.category_id, lastChannel || undefined);
       }
+      // Inicia com o Guia de Canais aberto sobreposto ao vídeo para escolha imediata
+      setIsDrawerOpen(true);
     } catch (err) {
       console.error('Failed to initialize Live TV:', err);
     } finally {
@@ -121,12 +140,12 @@ export default function TVLiveScreen() {
       setChannels(list);
 
       const targetChannel =
-        preferredChannel && list.some((c) => c.stream_id === preferredChannel.stream_id)
+        preferredChannel && list.some((c) => String(c.stream_id) === String(preferredChannel.stream_id))
           ? preferredChannel
           : list[0] || null;
 
       if (targetChannel) {
-        tuneChannel(targetChannel);
+        tuneChannel(targetChannel, false, true);
       }
     } catch (err) {
       console.error('Failed to load category channels:', err);
@@ -135,7 +154,19 @@ export default function TVLiveScreen() {
 
   // Tune into a Channel (Instant Video Stream Switch)
   const tuneChannel = useCallback(
-    async (channel: LiveChannel) => {
+    async (channel: LiveChannel, showBanner: boolean = true, forceReload: boolean = false) => {
+      const currentChan = activeChannelRef.current || activeChannel;
+      const isSameChannel = currentChan && String(currentChan.stream_id) === String(channel.stream_id);
+
+      if (isSameChannel && !forceReload) {
+        // Se for o mesmo canal que já está sendo assistido, NÃO recarrega o player de vídeo!
+        if (showBanner) {
+          triggerZappingBanner();
+        }
+        return;
+      }
+
+      activeChannelRef.current = channel;
       setActiveChannel(channel);
 
       // Generate video stream URL
@@ -154,25 +185,33 @@ export default function TVLiveScreen() {
       // Persist as last watched
       storage.saveLastLiveChannel(channel);
 
-      // Show Zapping Banner and auto-hide
-      triggerZappingBanner();
+      // Show Zapping Banner only if requested
+      if (showBanner) {
+        triggerZappingBanner();
+      } else {
+        setIsZappingBannerOpen(false);
+      }
 
       // Fetch EPG in background
       try {
         const epgList = await xtreamClient.getShortEpg(channel.stream_id);
-        if (epgList && epgList.length > 0) {
-          setCurrentEpg(epgList[0]);
-        } else {
-          setCurrentEpg(null);
+        if (activeChannelRef.current?.stream_id === channel.stream_id) {
+          if (epgList && epgList.length > 0) {
+            setCurrentEpg(epgList[0]);
+          } else {
+            setCurrentEpg(null);
+          }
         }
       } catch {
-        setCurrentEpg(null);
+        if (activeChannelRef.current?.stream_id === channel.stream_id) {
+          setCurrentEpg(null);
+        }
       }
     },
-    [player]
+    [player, activeChannel]
   );
 
-  // Trigger Zapping Banner with 4.5s auto-hide timer
+  // Trigger Zapping Banner with 5s auto-hide timer
   const triggerZappingBanner = () => {
     setIsZappingBannerOpen(true);
     if (zappingTimerRef.current) {
@@ -180,27 +219,39 @@ export default function TVLiveScreen() {
     }
     zappingTimerRef.current = setTimeout(() => {
       setIsZappingBannerOpen(false);
-    }, 4500);
+    }, 5000);
   };
 
-  // Handle D-Pad Zapping (Next / Previous Channel)
-  const handleZapping = (direction: 'next' | 'prev') => {
-    if (!channels || channels.length === 0 || !activeChannel) return;
+  // Handle D-Pad Zapping (Next / Previous Channel) - Percorre TODOS os canais da categoria
+  const handleZapping = useCallback((direction: 'next' | 'prev') => {
+    const channelList = channelsRef.current.length > 0 ? channelsRef.current : channels;
+    const currentChan = activeChannelRef.current || activeChannel;
+    if (!channelList || channelList.length === 0) return;
 
-    const currentIndex = channels.findIndex((c) => Number(c.stream_id) === Number(activeChannel.stream_id));
+    let currentIndex = -1;
+    if (currentChan) {
+      currentIndex = channelList.findIndex(
+        (c) =>
+          String(c.stream_id) === String(currentChan.stream_id) ||
+          Number(c.stream_id) === Number(currentChan.stream_id)
+      );
+    }
+
     let targetIndex = 0;
-
-    if (direction === 'next') {
-      targetIndex = currentIndex >= channels.length - 1 ? 0 : currentIndex + 1;
+    if (currentIndex === -1) {
+      targetIndex = 0;
+    } else if (direction === 'next') {
+      targetIndex = currentIndex >= channelList.length - 1 ? 0 : currentIndex + 1;
     } else {
-      targetIndex = currentIndex <= 0 ? channels.length - 1 : currentIndex - 1;
+      targetIndex = currentIndex <= 0 ? channelList.length - 1 : currentIndex - 1;
     }
 
-    const nextChan = channels[targetIndex];
+    const nextChan = channelList[targetIndex];
     if (nextChan) {
-      tuneChannel(nextChan);
+      activeChannelRef.current = nextChan;
+      tuneChannel(nextChan, true);
     }
-  };
+  }, [channels, activeChannel, tuneChannel]);
 
   // Toggle Favorite Status
   const handleToggleFavorite = async (channel: LiveChannel) => {
@@ -215,7 +266,7 @@ export default function TVLiveScreen() {
     if (selectedCategory?.category_id === 'favorites') {
       setChannels(updatedFavList);
       if (activeChannel?.stream_id === channel.stream_id && updatedFavList.length > 0) {
-        tuneChannel(updatedFavList[0]);
+        tuneChannel(updatedFavList[0], false);
       }
     }
   };
@@ -227,17 +278,18 @@ export default function TVLiveScreen() {
         setShowExitDialog(false);
         return true;
       }
-      // Se estiver no Guia/Menu e apertar voltar, vai para a Home (Imagem 2)
+      // Se estiver no Guia e apertar Voltar, fecha o guia e assiste em tela cheia
       if (isDrawerOpen) {
-        router.replace('/(tv)/home');
+        setIsDrawerOpen(false);
         return true;
       }
       if (isZappingBannerOpen) {
         setIsZappingBannerOpen(false);
+        return true;
       }
 
-      // Se estiver assistindo ao vídeo e apertar voltar, abre o menu de canais (Imagem 1)
-      setIsDrawerOpen(true);
+      // Se já estiver em tela cheia e apertar Voltar, exibe diálogo para voltar ao menu principal
+      setShowExitDialog(true);
       return true;
     };
 
@@ -251,11 +303,40 @@ export default function TVLiveScreen() {
     loadCategoryChannels(cat.category_id);
   };
 
-  // Handle Channel Select from Drawer: ao clicar no canal já vai direto para o vídeo (Imagem 2)
+  // Handle Channel Select from Drawer: se for o mesmo canal não recarrega o vídeo; se for outro, troca
   const handleChannelSelect = (channel: LiveChannel) => {
-    tuneChannel(channel);
     setIsDrawerOpen(false);
+    const currentChan = activeChannelRef.current || activeChannel;
+    if (currentChan && String(currentChan.stream_id) === String(channel.stream_id)) {
+      // Já está assistindo este canal: NÃO recarrega o player de vídeo!
+      triggerZappingBanner();
+      return;
+    }
+    tuneChannel(channel, true);
   };
+
+  // Abre o Guia garantindo que a categoria e o canal ativo estejam selecionados
+  const openChannelMenu = () => {
+    setIsZappingBannerOpen(false);
+    const currentChan = activeChannelRef.current || activeChannel;
+    if (currentChan && currentChan.category_id && selectedCategory?.category_id !== currentChan.category_id) {
+      const matchCat = categories.find((c) => String(c.category_id) === String(currentChan.category_id));
+      if (matchCat) {
+        setSelectedCategory(matchCat);
+        loadCategoryChannels(matchCat.category_id, currentChan);
+      }
+    }
+    setIsDrawerOpen(true);
+  };
+
+  // Garante que o foco sempre retorne para o centro ao fechar a gaveta ou diálogos
+  useEffect(() => {
+    if (!isDrawerOpen && !showExitDialog) {
+      setTimeout(() => {
+        centerFocusRef.current?.focus?.();
+      }, 100);
+    }
+  }, [isDrawerOpen, showExitDialog]);
 
   if (isLoading) {
     return (
@@ -285,45 +366,15 @@ export default function TVLiveScreen() {
         )}
       </View>
 
-      {/* 2. Ponte de Navegação D-Pad para Zapping Vertical Cima/Baixo */}
+      {/* 2. Toque ou Tecla em Tela Cheia abre o Guia de Canais posicionado no canal ativo */}
       {!isDrawerOpen && !showExitDialog && (
-        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-          {/* Alvo Superior: D-Pad Cima (Canal Anterior) */}
-          <Pressable
-            focusable={true}
-            onFocus={() => {
-              handleZapping('prev');
-              setTimeout(() => centerFocusRef.current?.focus?.(), 100);
-            }}
-            style={styles.dpadTargetHidden}
-          />
-
-          {/* Alvo Central: Foco Padrão do Controle Remoto */}
-          <Pressable
-            ref={centerFocusRef}
-            focusable={true}
-            hasTVPreferredFocus={!isDrawerOpen && !showExitDialog && !isZappingBannerOpen}
-            onPress={() => {
-              if (isZappingBannerOpen) {
-                setIsDrawerOpen(true);
-                setIsZappingBannerOpen(false);
-              } else {
-                triggerZappingBanner();
-              }
-            }}
-            style={styles.dpadCenterTarget}
-          />
-
-          {/* Alvo Inferior: D-Pad Baixo (Próximo Canal) */}
-          <Pressable
-            focusable={true}
-            onFocus={() => {
-              handleZapping('next');
-              setTimeout(() => centerFocusRef.current?.focus?.(), 100);
-            }}
-            style={styles.dpadTargetHidden}
-          />
-        </View>
+        <Pressable
+          ref={centerFocusRef}
+          focusable={true}
+          hasTVPreferredFocus={true}
+          onPress={openChannelMenu}
+          style={StyleSheet.absoluteFill}
+        />
       )}
 
       {/* 3. On-Screen Display (OSD) Multicamadas: Gaveta Translúcida & Zapping */}
@@ -341,12 +392,7 @@ export default function TVLiveScreen() {
         isZappingBannerOpen={isZappingBannerOpen}
         currentEpg={currentEpg}
         onExitToHome={() => router.replace('/(tv)/home')}
-        onPreviousChannel={() => handleZapping('prev')}
-        onNextChannel={() => handleZapping('next')}
-        onOpenDrawer={() => {
-          setIsZappingBannerOpen(false);
-          setIsDrawerOpen(true);
-        }}
+        onOpenDrawer={openChannelMenu}
       />
 
       {/* 4. Modal de Confirmação de Saída para o Menu Principal */}
@@ -401,6 +447,24 @@ function ModalActionButton({
   onPress: () => void;
 }) {
   const [isFocused, setIsFocused] = useState(false);
+  const isContinue = !isPrimary;
+
+  let bg = '#1F1F28';
+  let border = '#333340';
+  let textColor = '#FFFFFF';
+
+  if (isContinue) {
+    // Continuar Assistindo: Branco sólido com anel de foco Cyan
+    bg = '#FFFFFF';
+    border = isFocused ? colors.primary : '#FFFFFF';
+    textColor = '#000000';
+  } else {
+    // Sair para o Menu: Cyan no foco ou background escuro
+    bg = isFocused ? colors.primary : '#1F1F28';
+    border = isFocused ? '#FFFFFF' : '#333340';
+    textColor = isFocused ? '#070A12' : '#FFFFFF';
+  }
+
   return (
     <Pressable
       focusable={true}
@@ -409,14 +473,23 @@ function ModalActionButton({
       onBlur={() => setIsFocused(false)}
       onPress={onPress}
       style={[
-        isPrimary ? styles.exitModalBtnPrimary : styles.exitModalBtnSecondary,
+        styles.exitModalBtnBase,
+        {
+          backgroundColor: bg,
+          borderColor: border,
+          borderWidth: isFocused ? 2.5 : 1.5,
+        },
         isFocused && styles.exitBtnFocused,
       ]}
     >
       <Text
-        style={
-          isPrimary ? styles.exitModalBtnPrimaryText : styles.exitModalBtnSecondaryText
-        }
+        style={[
+          styles.exitModalBtnTextBase,
+          {
+            color: textColor,
+            fontWeight: isFocused ? '900' : '700',
+          },
+        ]}
       >
         {label}
       </Text>
@@ -440,15 +513,6 @@ const styles = StyleSheet.create({
     marginTop: 14,
     fontSize: 14,
     fontWeight: '500',
-  },
-  dpadTargetHidden: {
-    height: 35,
-    width: '100%',
-    opacity: 0,
-  },
-  dpadCenterTarget: {
-    flex: 1,
-    width: '100%',
   },
   blackBackground: {
     flex: 1,
@@ -501,36 +565,24 @@ const styles = StyleSheet.create({
     gap: 12,
     width: '100%',
   },
-  exitModalBtnSecondary: {
+  exitModalBtnBase: {
     flex: 1,
     paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 8,
-    backgroundColor: '#1F1F28',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: 'transparent',
+    justifyContent: 'center',
   },
-  exitModalBtnSecondaryText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
-  exitModalBtnPrimary: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-  },
-  exitModalBtnPrimaryText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: 'bold',
+  exitModalBtnTextBase: {
+    fontSize: 14,
+    letterSpacing: 0.3,
   },
   exitBtnFocused: {
-    borderColor: colors.focusRing,
-    transform: [{ scale: 1.04 }],
+    transform: [{ scale: 1.06 }],
+    elevation: 12,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.9,
+    shadowRadius: 10,
   },
 });

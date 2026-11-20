@@ -86,8 +86,17 @@ Diferente do app mobile, o **Axi Player TV** é construído desde a raiz para:
     * Coluna 1: Categorias (ex: Esportes, Filmes, Notícias, Variedades).
     * Coluna 2: Lista de canais da categoria selecionada com logo, número e programa atual (EPG).
   * O vídeo continua rodando ao fundo sem interrupção.
-* **Zapping no Controle Remoto:**
-  * Tecla **Cima / Baixo**: Troca de canal imediatamente exibindo o mini-banner inferior de informações (Canal, Logo, Programa Atual e Barra de Progresso do EPG) que some após 4 segundos de inatividade.
+* **Guia Lateral de Zapping & Painel Dinâmico de Detalhes (Padrão TiviMate):**
+  * **Foco Natural e Eliminação de Alvos Invisíveis:** Removida a antiga técnica de botões invisíveis com timers. Agora, o foco do D-Pad navega diretamente e suavemente na lista de canais sem perda de foco e sem ping-pong entre canais.
+  * **Painel Dinâmico de Detalhes em Tempo Real:** Conforme o usuário sobe ou desce no D-Pad na lista de canais, a Coluna 3 atualiza instantaneamente com o logo grande, nome, status e guia EPG do canal focado (`previewChannel`).
+  * **Favoritar no Guia (⭐):**
+    * *Botão Dedicado:* Na Coluna 3 de Detalhes, botão em destaque `[ ⭐ Adicionar aos Favoritos ]` / `[ Remover dos Favoritos ]` acessível com seta para a direita.
+    * *Atalho Long Press:* Segurar a tecla OK por 800ms em qualquer canal da lista alterna o status de favorito na hora com a estrela dourada `★`.
+  * **Reprodução e Expansão:** Pressionar OK em qualquer canal sintoniza a transmissão e fecha o guia para tela cheia. Pressionar OK ou as setas na tela cheia reabre o guia com o foco posicionado no canal que está tocando.
+
+  * **Eliminação Total da Imagem de Alvo na Abertura:** Remoção nativa em styles.xml, colors.xml (#070A12), substituição dos drawables de splash por imagens limpas e remoção do glowHalo no app/index.tsx.
+
+
 * **Tecla Voltar (Back Button):**
   * Se o menu OSD estiver aberto: Fecha o menu OSD e mantém o vídeo em tela cheia.
   * Se já estiver em tela cheia: Exibe diálogo de confirmação "Deseja sair para o menu principal?".
@@ -128,8 +137,10 @@ Diferente do app mobile, o **Axi Player TV** é construído desde a raiz para:
 * **Seção "Você também pode gostar":**
   * Carrossel horizontal no rodapé com até 14 títulos recomendados da mesma categoria. Clicar em qualquer recomendado atualiza a tela de detalhes instantaneamente.
 
-### 4.9 Player VOD com Seek D-Pad (+/- 10s) e Gestão de Faixas
-* **Seek no Controle Remoto:** Teclas Esquerda e Direita efetuam salto de 10 segundos com banner feedback em neon (`-10s` / `+10s`).
+### 4.9 Player VOD com Seek Contínuo ao Segurar (+/- 10s e Aceleração Progressiva) e Gestão de Faixas
+* **Seek Simples e Contínuo ao Segurar (Fast-Forward / Rewind Dinâmico):**
+  * **Toque Rápido (< 300ms):** Salto padrão de 10 segundos (`+10s` / `-10s`).
+  * **Segurar o Botão (Hold):** Ao segurar o botão de avançar ou retroceder no controle remoto ou tela, engata avanço contínuo com aceleração progressiva (5s -> 15s -> 30s -> 60s por tick) enquanto o botão estiver pressionado, exibindo a minutagem em tempo real e aplicando ao soltar.
 * **Play / Pause:** Tecla central OK pausa e retoma o vídeo instantaneamente.
 * **Seletor de Áudio e Legendas:** Modais dedicados para troca de faixas de áudio e legendas nativas do stream.
 * **Tratamento Inteligente da Tecla Voltar:** Fecha o OSD/modais sem parar a reprodução; se o OSD já estiver oculto, exibe diálogo com a posição salva para continuar depois.
@@ -385,4 +396,40 @@ axi-player-tv/
     8. **`app/(tv)/search.tsx` (Busca Global com Teclado TV):** Teclado virtual na tela adaptado para D-Pad com busca simultânea em canais ao vivo e catálogo VOD.
     9. **`app/(tv)/settings.tsx` (Ajustes & Gerenciador de Lista):** Dados da conta, sincronização programada da lista (3 a 5 dias), recarregamento forçado, limpeza de cache e nova seção **"MINHAS LISTAS & COLEÇÕES"** com grid focável e modal gerenciador de 4 abas (*Favoritos*, *Continuar Assistindo*, *Minha Lista*, *Assistir Depois*) com ações de reproduzir e excluir.
     10. **`app/player/[id].tsx` (Player Widescreen Imersivo):** ExoPlayer nativo com timeline interativa, avanço arrastável (draggable scrubber com tooltip de tempo flutuante), controles de volume/brilho, detecção de falha de carregamento com fallback automático para versão alternativa e modal de saída com botão branco de alto contraste.
+  * Compilação TypeScript validada com **0 erros** (`npx tsc --noEmit`).
+
+
+### Sessão: 19 de Novembro de 2026
+* **Estabilização da TV ao Vivo, Refinamento de Foco e Limpeza dos Players:**
+  * **Correção do Zapping Automático na TV ao Vivo (`live.tsx` e `TVLiveOSD.tsx`):**
+    * Identificada a causa raiz da troca automática e contínua de canais: quando o banner de zapping auto-fechava (timer de 4.5s) e desmontava da árvore de visualizações, o foco no Android TV era perdido e caía involuntariamente no primeiro alvo focalizável do topo (`dpadTargetHidden`), disparando repetidamente o evento `onFocus` (`handleZapping('prev')`).
+    * Implementada trava temporal de navegação D-Pad (`timeSinceCenter < 300ms`) e debounce de 600ms em `handleZapping`. O zapping agora só é aceito se o usuário tiver navegado intencionalmente a partir do centro da tela.
+    * Removido `hasPreferredFocus={true}` forçado do botão "Guia (OK)" no OSD, evitando o roubo e perda de foco na desmontagem do banner.
+    * O foco primário no player em tela cheia agora permanece estável e contínuo no alvo central.
+  * **Correção Visual do CSS de Foco das Categorias no Home (`TVCategoryBrandCard.tsx`):**
+    * Substituído o antigo visual lavado em cinza translúcido (`rgba(255,255,255,0.12)`) por preenchimento vibrante na cor de destaque da marca (`accentColor`) ao focar.
+    * Borda de alto contraste branco sólido (`#FFFFFF`, 2.5px), elevação 14 e cálculo inteligente de contraste de texto (`isLightColor` para escolher entre texto escuro `#070A12` ou branco `#FFFFFF`).
+    * Ajustado `paddingVertical` do carrossel no Home para evitar cortes de sombra e borda nos cards escalados (1.06x).
+  * **Correção do Layout de Seleção D-Pad nos Modais de Saída e Confirmação (`player/[id].tsx` e `live.tsx`):**
+    * Identificado que o padrão `style={({ focused }: any) => ...}` não recebia o estado de foco no React Native core, mantendo botões estáticos durante a navegação.
+    * Criado o componente dedicado `FocusableDialogButton` com controle de estado `isFocused` local via `onFocus`/`onBlur`.
+    * **"Continuar Assistindo":** Fundo branco sólido com anel de foco em Neon Cyan (`#00E5FF`, 2.5px), elevação 14, scale 1.08x e texto em preto negrito.
+    * **"Salvar e Sair":** Fundo Neon Cyan (`#00E5FF`) com texto escuro e borda branca de destaque no foco.
+    * Aplicado também aos diálogos de erro, trilhas de áudio e legendas.
+  * **Remoção de Funções Inoperantes de Brilho e Volume no Player (`player/[id].tsx`):**
+    * Removidos os estados `volume` e `brightness`, funções `handleAdjustVolume` e `handleAdjustBrightness`, camada de escurecimento simulado e sliders verticais laterais (esquerdo e direito), despoluindo a tela e eliminando armadilhas de foco nas laterais do player VOD.
+  * Compilação TypeScript validada com **0 erros** (`npx tsc --noEmit`).
+
+
+### Sessão: 20 de Novembro de 2026
+* **Restauração da Barra de Ações do Player TV ao Vivo & Clique Direto da Gaveta:**
+  * **Restauração da Navegação e Layout de Seleção na Barra OSD (`TVLiveOSD.tsx`):**
+    * Restabelecida a navegação fluida por D-Pad entre os 4 botões da barra inferior: `[ Anterior (▲) ]`, `[ Guia (OK) ]`, `[ ⭐ Favorito ]` e `[ Próximo (▼) ]`.
+    * Aplicado o layout oficial de seleção nos botões com preenchimento em Neon Cyan (`#00E5FF`), borda de alto contraste branco sólido (`#FFFFFF`, 2.5px), texto e ícone em preto de alta legibilidade (`#070A12`, 900), elevação `14` e escala `1.10x`.
+    * O foco agora se posiciona inteligentemente no botão acionado (`initialBannerFocus`), permitindo que cliques sucessivos em `Anterior` ou `Próximo (Avança)` troquem de canal continuamente sem travar após uma única troca.
+    * A camada de captura de tela cheia agora é desativada quando a barra de zapping está aberta (`!isZappingBannerOpen`), permitindo que o foco caia livremente sobre os botões da barra.
+  * **Clique Direto da Lista de Categoria > Canal para o Player:**
+    * Ao selecionar qualquer canal na lista de `Categorias > Canais` dentro da gaveta, o aplicativo fecha imediatamente o menu (`setIsDrawerOpen(false)`), suprime a sobreposição do banner e sintoniza a transmissão diretamente em tela cheia no player.
+  * **Correção da Tecla Voltar (Back):**
+    * Pressionar Voltar enquanto a barra de zapping estiver visível agora apenas fecha a barra, mantendo a reprodução contínua em tela cheia (adicionado `return true;`), sem reabrir a gaveta.
   * Compilação TypeScript validada com **0 erros** (`npx tsc --noEmit`).

@@ -7,6 +7,11 @@
     "orientation": "landscape",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "backgroundColor": "#070A12",
+      "resizeMode": "contain"
+    },
     "android": {
       "package": "com.axiplayertv.app",
       "adaptiveIcon": {
@@ -26,6 +31,15 @@
       "predictiveBackGestureEnabled": false
     },
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#070A12",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain"
+        }
+      ],
       "./plugins/withCleartextTraffic",
       "./plugins/withAndroidTV",
       "expo-router",

@@ -37,8 +37,14 @@ export default function TVSettingsScreen() {
   const [listManagerTab, setListManagerTab] = useState<'favorites' | 'continue' | 'mylist' | 'watchlater'>('favorites');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'live' | 'movie' | 'series'>('all');
 
+  const firstFocusRef = React.useRef<any>(null);
+
   useEffect(() => {
     loadSettings();
+    const timer = setTimeout(() => {
+      firstFocusRef.current?.focus?.();
+    }, 120);
+    return () => clearTimeout(timer);
   }, []);
 
   const loadSettings = async () => {
@@ -75,7 +81,7 @@ export default function TVSettingsScreen() {
     setIsReloadingList(true);
     try {
       xtreamClient.setCredentials(profile.serverUrl, profile.username, profile.password);
-      XtreamClient.clearCache();
+      await XtreamClient.clearPersistentCache();
 
       await Promise.all([
         xtreamClient.getLiveCategories(),
@@ -116,8 +122,8 @@ export default function TVSettingsScreen() {
         {
           text: 'Limpar',
           style: 'destructive',
-          onPress: () => {
-            XtreamClient.clearCache();
+          onPress: async () => {
+            await XtreamClient.clearPersistentCache();
             Alert.alert('Sucesso', 'Cache temporário de TV esvaziado.');
           },
         },
@@ -425,7 +431,9 @@ export default function TVSettingsScreen() {
         <View style={styles.listManagerGrid}>
           {/* Card Meus Favoritos */}
           <Pressable
+            ref={firstFocusRef}
             focusable={true}
+            hasTVPreferredFocus={true}
             style={({ focused }: any) => [
               styles.listManagerTile,
               focused && styles.listManagerTileFocused,
@@ -523,6 +531,7 @@ export default function TVSettingsScreen() {
               <Pressable
                 key={days}
                 focusable={true}
+                hasTVPreferredFocus={isSelected}
                 onPress={() => handleSelectReloadDays(days)}
                 style={({ focused }: any) => [
                   styles.reloadDayPill,
@@ -530,19 +539,24 @@ export default function TVSettingsScreen() {
                   focused && styles.reloadDayPillFocused,
                 ]}
               >
-                <Ionicons
-                  name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={18}
-                  color={isSelected ? colors.primary : '#6E7687'}
-                />
-                <Text
-                  style={[
-                    styles.reloadDayText,
-                    isSelected && styles.reloadDayTextSelected,
-                  ]}
-                >
-                  {days} Dias {days === 5 ? '(Recomendado)' : ''}
-                </Text>
+                {({ focused }: any) => (
+                  <>
+                    <Ionicons
+                      name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={18}
+                      color={focused ? '#070A12' : isSelected ? colors.primary : '#6E7687'}
+                    />
+                    <Text
+                      style={[
+                        styles.reloadDayText,
+                        isSelected && styles.reloadDayTextSelected,
+                        focused && styles.reloadDayTextFocused,
+                      ]}
+                    >
+                      {days} Dias {days === 5 ? '(Recomendado)' : ''}
+                    </Text>
+                  </>
+                )}
               </Pressable>
             );
           })}
@@ -911,11 +925,18 @@ const styles = StyleSheet.create({
   },
   reloadDayPillSelected: {
     borderColor: colors.primary,
-    backgroundColor: 'rgba(0, 229, 255, 0.12)',
+    backgroundColor: 'rgba(0, 229, 255, 0.16)',
   },
   reloadDayPillFocused: {
-    borderColor: colors.focusRing,
-    transform: [{ scale: 1.05 }],
+    backgroundColor: colors.primary,
+    borderColor: '#FFFFFF',
+    borderWidth: 2.5,
+    transform: [{ scale: 1.08 }],
+    elevation: 12,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.95,
+    shadowRadius: 10,
   },
   reloadDayText: {
     color: '#C5C9D6',
@@ -924,6 +945,10 @@ const styles = StyleSheet.create({
   },
   reloadDayTextSelected: {
     color: colors.primary,
+  },
+  reloadDayTextFocused: {
+    color: '#070A12',
+    fontWeight: '900',
   },
   reloadStatusRow: {
     flexDirection: 'row',

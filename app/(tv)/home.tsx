@@ -143,8 +143,11 @@ export default function TVHomeScreen() {
       setMovies(topMovies);
       setSeries(topSeries);
 
-      // Sincroniza marcação de recarga de lista da TV
-      storage.markPlaylistReloaded().catch(() => {});
+      // Sincroniza marcação de recarga de lista da TV somente se o período estava vencido
+      const isDue = await storage.isPlaylistReloadDue().catch(() => false);
+      if (isDue) {
+        await storage.markPlaylistReloaded().catch(() => {});
+      }
 
       // Spotlight Hero item
       if (topMovies.length > 0) {
@@ -729,7 +732,7 @@ const styles = StyleSheet.create({
   },
   brandCardsCarousel: {
     paddingHorizontal: 24,
-    paddingVertical: 6,
+    paddingVertical: 10,
   },
   categoryCarousel: {
     paddingHorizontal: 24,

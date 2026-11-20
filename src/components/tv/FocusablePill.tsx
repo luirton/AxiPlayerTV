@@ -52,31 +52,34 @@ export const FocusablePill: React.FC<FocusablePillProps> = ({
     setIsFocused(false);
   };
 
-  // Base background and text colors following Axi System Cyan palette
+  // Cores de fundo e texto seguindo o padrão de foco e seleção Axi TV
   const getBackgroundColor = () => {
     if (isFocused) {
-      return colors.primary; // #00E5FF (Axi Neon Cyan)
+      return colors.primary; // #00E5FF sólido quando focado pelo D-Pad
     }
     if (isSelected) {
       if (activeColor) return activeColor;
-      return colors.primary; // #00E5FF (Axi Neon Cyan)
+      return 'rgba(0, 229, 255, 0.16)'; // Fundo sutil para o item selecionado
     }
     return '#151C30';
   };
 
   const getBorderColor = () => {
     if (isFocused) {
-      return '#FFFFFF'; // Borda branca de alto contraste no foco
+      return '#FFFFFF'; // Borda branca sólida 2.5px de alto contraste no foco
     }
     if (isSelected) {
-      return colors.primary;
+      return colors.primary; // Borda cyan marcando a seleção
     }
     return '#1E2845';
   };
 
   const getTextColor = () => {
-    if (isFocused || isSelected) {
-      return '#070A12'; // Preto sobre o Cyan neon do sistema
+    if (isFocused) {
+      return '#070A12'; // Preto de alto contraste sobre o fundo Neon Cyan focado
+    }
+    if (isSelected) {
+      return colors.primary; // Texto Cyan no item selecionado
     }
     return '#CBD5E1';
   };
@@ -105,7 +108,7 @@ export const FocusablePill: React.FC<FocusablePillProps> = ({
           <Ionicons
             name={icon}
             size={14}
-            color={iconColor || (isFocused || isSelected ? '#070A12' : '#8E8E93')}
+            color={iconColor || (isFocused ? '#070A12' : isSelected ? colors.primary : '#8E8E93')}
             style={styles.icon}
           />
         )}

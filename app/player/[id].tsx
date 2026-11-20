@@ -61,10 +61,6 @@ export default function TVPlayerScreen() {
   // Aspect ratio / Content fit ('contain' | 'cover' | 'fill')
   const [contentFit, setContentFit] = useState<'contain' | 'cover' | 'fill'>('contain');
 
-  // Sliders: Volume (0 to 1) and Brightness (0.2 to 1)
-  const [volume, setVolume] = useState<number>(1.0);
-  const [brightness, setBrightness] = useState<number>(1.0);
-
   // Favorite State
   const [isFavorite, setIsFavorite] = useState<boolean>(false);
 
@@ -117,6 +113,14 @@ export default function TVPlayerScreen() {
   const triedIdsRef = useRef<Set<string>>(new Set([String(id)]));
   const targetPositionRef = useRef<number>(0);
   const initialSeekDoneRef = useRef<boolean>(false);
+
+  // Refs e Lógica para Avanço / Retrocesso Contínuo ao Segurar Botão
+  const continuousSeekTimerRef = useRef<any>(null);
+  const continuousSeekIntervalRef = useRef<any>(null);
+  const isContinuousSeekingRef = useRef<boolean>(false);
+  const continuousTargetRef = useRef<number>(0);
+  const continuousStartPosRef = useRef<number>(0);
+  const continuousTicksRef = useRef<number>(0);
 
   currentTimeRef.current = currentTime;
   durationRef.current = duration;
@@ -526,6 +530,132 @@ export default function TVPlayerScreen() {
     resetHideTimer();
   };
 
+  const formatOffsetLabel = (sec: number) => {
+    const abs = Math.abs(sec);
+    const m = Math.floor(abs / 60);
+    const s = abs % 60;
+    if (m > 0) {
+      return `${sec >= 0 ? '+' : '-'}${m}m ${s > 0 ? `${s}s` : ''}`.trim();
+    }
+    return `${sec >= 0 ? '+' : ''}${sec}s`;
+  };
+
+  // Avanço e Retrocesso Contínuos e Acelerados ao Segurar os Botões
+  const startContinuousSeek = (direction: 'fwd' | 'rwd') => {
+    if (durationRef.current <= 0) return;
+    if (continuousSeekTimerRef.current) clearTimeout(continuousSeekTimerRef.current);
+    if (continuousSeekIntervalRef.current) clearInterval(continuousSeekIntervalRef.current);
+
+    isContinuousSeekingRef.current = true;
+    continuousTicksRef.current = 0;
+    continuousStartPosRef.current = currentTimeRef.current;
+    continuousTargetRef.current = currentTimeRef.current;
+    resetHideTimer();
+
+    // Loop rápido a cada 90ms com avanço progressivo acelerado
+    continuousSeekIntervalRef.current = setInterval(() => {
+      continuousTicksRef.current += 1;
+      const ticks = continuousTicksRef.current;
+
+      // Aceleração progressiva veloz:
+      // Ticks 1..5 (~0.5s): 15s por tick (~160s/s)
+      // Ticks 6..15 (~1.4s): 30s por tick (~330s/s)
+      // Ticks 16..30 (~2.7s): 60s por tick (~660s/s)
+      // Ticks > 30: 120s por tick (~1300s/s)
+      let step = 15;
+      if (ticks > 30) step = 120;
+      else if (ticks > 15) step = 60;
+      else if (ticks > 5) step = 30;
+
+      const delta = direction === 'fwd' ? step : -step;
+      const newTarget = Math.max(0, Math.min(durationRef.current, continuousTargetRef.current + delta));
+      continuousTargetRef.current = newTarget;
+
+      setCurrentTime(newTarget);
+      currentTimeRef.current = newTarget;
+
+      const totalDiff = Math.round(newTarget - continuousStartPosRef.current);
+      setSeekFlash({
+        visible: true,
+        type: direction,
+        label: `${direction === 'fwd' ? '⏩' : '⏪'} ${formatOffsetLabel(totalDiff)} (${formatTime(newTarget)})`,
+      });
+
+      resetHideTimer();
+    }, 90);
+  };
+
+  const handleSeekPressIn = (direction: 'fwd' | 'rwd') => {
+    if (durationRef.current <= 0) return;
+    if (continuousSeekTimerRef.current) clearTimeout(continuousSeekTimerRef.current);
+    if (continuousSeekIntervalRef.current) clearInterval(continuousSeekIntervalRef.current);
+
+    // Se segurado por mais de 220ms, engata avanço contínuo rápido
+    continuousSeekTimerRef.current = setTimeout(() => {
+      startContinuousSeek(direction);
+    }, 220);
+  };
+
+  const handleSeekLongPress = (direction: 'fwd' | 'rwd') => {
+    // Disparo de clique longo no controle remoto ou tela
+    if (!isContinuousSeekingRef.current) {
+      startContinuousSeek(direction);
+    }
+  };
+
+  const handleSeekPressOut = (direction: 'fwd' | 'rwd') => {
+    if (continuousSeekTimerRef.current) {
+      clearTimeout(continuousSeekTimerRef.current);
+      continuousSeekTimerRef.current = null;
+    }
+    if (continuousSeekIntervalRef.current) {
+      clearInterval(continuousSeekIntervalRef.current);
+      continuousSeekIntervalRef.current = null;
+    }
+
+    if (isContinuousSeekingRef.current) {
+      const finalTarget = continuousTargetRef.current;
+      if (player && durationRef.current > 0) {
+        player.currentTime = finalTarget;
+        setCurrentTime(finalTarget);
+        currentTimeRef.current = finalTarget;
+        saveCurrentProgress();
+      }
+
+      setSeekFlash({
+        visible: true,
+        type: direction,
+        label: `${direction === 'fwd' ? '▶' : '◀'} ${formatTime(finalTarget)}`,
+      });
+
+      if (seekFlashTimerRef.current) clearTimeout(seekFlashTimerRef.current);
+      seekFlashTimerRef.current = setTimeout(() => {
+        setSeekFlash((prev) => ({ ...prev, visible: false }));
+      }, 1500);
+
+      resetHideTimer();
+
+      // Mantém a flag por 200ms para impedir duplo disparo do onPress
+      setTimeout(() => {
+        isContinuousSeekingRef.current = false;
+      }, 200);
+    }
+  };
+
+  const handleCircularBtnPress = (offsetSec: number) => {
+    if (isContinuousSeekingRef.current) return;
+    handleSeek(offsetSec);
+  };
+
+  // Limpeza de timers ao desmontar o componente
+  useEffect(() => {
+    return () => {
+      if (continuousSeekTimerRef.current) clearTimeout(continuousSeekTimerRef.current);
+      if (continuousSeekIntervalRef.current) clearInterval(continuousSeekIntervalRef.current);
+      if (seekFlashTimerRef.current) clearTimeout(seekFlashTimerRef.current);
+    };
+  }, []);
+
   // Toggle Aspect Ratio
   const handleToggleContentFit = () => {
     setContentFit((prev) => {
@@ -554,24 +684,6 @@ export default function TVPlayerScreen() {
       } as any);
       setIsFavorite((prev) => !prev);
     }
-    resetHideTimer();
-  };
-
-  // Adjust Volume
-  const handleAdjustVolume = (delta: number) => {
-    setVolume((prev) => {
-      const next = Math.max(0, Math.min(1.0, prev + delta));
-      try {
-        if (player) player.volume = next;
-      } catch (e) {}
-      return next;
-    });
-    resetHideTimer();
-  };
-
-  // Adjust Brightness
-  const handleAdjustBrightness = (delta: number) => {
-    setBrightness((prev) => Math.max(0.2, Math.min(1.0, prev + delta)));
     resetHideTimer();
   };
 
@@ -640,16 +752,7 @@ export default function TVPlayerScreen() {
         />
       ) : null}
 
-      {/* Camada de ajuste de brilho simulado */}
-      {brightness < 1.0 && (
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            { backgroundColor: `rgba(0,0,0,${(1 - brightness).toFixed(2)})` },
-          ]}
-          pointerEvents="none"
-        />
-      )}
+
 
       {/* Buffering Indicator */}
       {isBuffering && (
@@ -747,70 +850,17 @@ export default function TVPlayerScreen() {
             </View>
           </LinearGradient>
 
-          {/* 2. Barra Lateral Esquerda: Slider Vertical de Brilho (Imagem 9) */}
-          <View style={styles.leftSliderContainer} pointerEvents="box-none">
-            <Pressable
-              focusable={true}
-              onPress={() => handleAdjustBrightness(brightness >= 0.9 ? -0.4 : 0.2)}
-              style={({ focused }: any) => [
-                styles.sliderTrackWrapper,
-                focused && styles.sliderFocused,
-              ]}
-            >
-              <Ionicons name="sunny-outline" size={20} color="#FFFFFF" style={styles.sliderIcon} />
-              <View style={styles.verticalTrackBg}>
-                <View
-                  style={[
-                    styles.verticalTrackFill,
-                    { height: `${Math.round(brightness * 100)}%` },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.verticalThumb,
-                    { bottom: `${Math.max(0, Math.min(94, Math.round(brightness * 100) - 6))}%` },
-                  ]}
-                />
-              </View>
-            </Pressable>
-          </View>
-
-          {/* 3. Barra Lateral Direita: Slider Vertical de Volume (Imagem 9) */}
-          <View style={styles.rightSliderContainer} pointerEvents="box-none">
-            <Pressable
-              focusable={true}
-              onPress={() => handleAdjustVolume(volume >= 0.9 ? -0.4 : 0.2)}
-              style={({ focused }: any) => [
-                styles.sliderTrackWrapper,
-                focused && styles.sliderFocused,
-              ]}
-            >
-              <Ionicons name="volume-high-outline" size={20} color="#FFFFFF" style={styles.sliderIcon} />
-              <View style={styles.verticalTrackBg}>
-                <View
-                  style={[
-                    styles.verticalTrackFill,
-                    { height: `${Math.round(volume * 100)}%` },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.verticalThumb,
-                    { bottom: `${Math.max(0, Math.min(94, Math.round(volume * 100) - 6))}%` },
-                  ]}
-                />
-              </View>
-            </Pressable>
-          </View>
-
-          {/* 4. Controles Centrais (Imagem 9): -10s, Play/Pause Central Gigante, +10s */}
+          {/* Controles Centrais (Imagem 9): -10s, Play/Pause Central Gigante, +10s */}
           <View style={styles.centerControlsContainer} pointerEvents="box-none">
             {isVod && (
               <TVPlayerCircularBtn
                 icon="refresh"
                 badgeText="10"
                 isCounterClockwise={true}
-                onPress={() => handleSeek(-10)}
+                onPress={() => handleCircularBtnPress(-10)}
+                onPressIn={() => handleSeekPressIn('rwd')}
+                onPressOut={() => handleSeekPressOut('rwd')}
+                onLongPress={() => handleSeekLongPress('rwd')}
               />
             )}
 
@@ -836,7 +886,10 @@ export default function TVPlayerScreen() {
                 icon="refresh"
                 badgeText="10"
                 isCounterClockwise={false}
-                onPress={() => handleSeek(10)}
+                onPress={() => handleCircularBtnPress(10)}
+                onPressIn={() => handleSeekPressIn('fwd')}
+                onPressOut={() => handleSeekPressOut('fwd')}
+                onLongPress={() => handleSeekLongPress('fwd')}
               />
             )}
           </View>
@@ -957,20 +1010,16 @@ export default function TVPlayerScreen() {
               Posição: {formatTime(currentTime)} / {formatTime(duration)}
             </Text>
             <Text style={styles.infoMeta}>
-              Ajuste de Tela: {contentFit.toUpperCase()} • Brilho: {Math.round(brightness * 100)}% • Volume: {Math.round(volume * 100)}%
+              Ajuste de Tela: {contentFit.toUpperCase()}
             </Text>
 
-            <Pressable
-              focusable={true}
+            <FocusableDialogButton
+              label="Fechar"
+              variant="secondary"
               hasTVPreferredFocus={true}
               onPress={() => setShowInfoModal(false)}
-              style={({ focused }: any) => [
-                styles.closeTrackBtn,
-                focused && styles.dialogBtnFocused,
-              ]}
-            >
-              <Text style={styles.closeTrackBtnText}>Fechar</Text>
-            </Pressable>
+              style={{ width: '100%', marginTop: 8 }}
+            />
           </View>
         </View>
       </Modal>
@@ -994,33 +1043,19 @@ export default function TVPlayerScreen() {
 
             <View style={styles.modalActionsRow}>
               {/* Continuar Assistindo (Branco Sólido - Imagem 1) */}
-              <Pressable
-                focusable={true}
+              <FocusableDialogButton
+                label="Continuar Assistindo"
+                variant="continue"
                 hasTVPreferredFocus={true}
                 onPress={() => setShowExitConfirm(false)}
-                style={({ focused }: any) => [
-                  styles.dialogBtn,
-                  styles.dialogBtnContinue,
-                  focused && styles.dialogBtnContinueFocused,
-                ]}
-              >
-                <Text style={styles.dialogBtnContinueText}>Continuar Assistindo</Text>
-              </Pressable>
+              />
 
               {/* Salvar e Sair */}
-              <Pressable
-                focusable={true}
+              <FocusableDialogButton
+                label="Salvar e Sair"
+                variant="secondary"
                 onPress={handleExitAndSave}
-                style={({ focused }: any) => [
-                  styles.dialogBtn,
-                  styles.dialogBtnSecondary,
-                  focused && styles.dialogBtnFocused,
-                ]}
-              >
-                <Text style={styles.dialogBtnSecondaryText}>
-                  Salvar e Sair
-                </Text>
-              </Pressable>
+              />
             </View>
           </View>
         </View>
@@ -1074,33 +1109,19 @@ export default function TVPlayerScreen() {
 
                 <View style={styles.modalActionsRow}>
                   {/* Tentar Próxima Versão (Branco Sólido de Alta Visibilidade) */}
-                  <Pressable
-                    focusable={true}
+                  <FocusableDialogButton
+                    label="Tentar Próxima Versão"
+                    variant="continue"
+                    icon="play"
                     hasTVPreferredFocus={true}
                     onPress={handleTryNextVersion}
-                    style={({ focused }: any) => [
-                      styles.dialogBtn,
-                      styles.dialogBtnContinue,
-                      focused && styles.dialogBtnContinueFocused,
-                    ]}
-                  >
-                    <Ionicons name="play" size={16} color="#000000" style={{ marginRight: 6 }} />
-                    <Text style={styles.dialogBtnContinueText}>
-                      Tentar Próxima Versão
-                    </Text>
-                  </Pressable>
+                  />
 
-                  <Pressable
-                    focusable={true}
+                  <FocusableDialogButton
+                    label="Voltar ao Catálogo"
+                    variant="secondary"
                     onPress={() => router.back()}
-                    style={({ focused }: any) => [
-                      styles.dialogBtn,
-                      styles.dialogBtnSecondary,
-                      focused && styles.dialogBtnFocused,
-                    ]}
-                  >
-                    <Text style={styles.dialogBtnSecondaryText}>Voltar ao Catálogo</Text>
-                  </Pressable>
+                  />
                 </View>
               </>
             ) : (
@@ -1110,19 +1131,13 @@ export default function TVPlayerScreen() {
                 </Text>
 
                 <View style={[styles.modalActionsRow, { justifyContent: 'center' }]}>
-                  <Pressable
-                    focusable={true}
+                  <FocusableDialogButton
+                    label="Voltar ao Catálogo"
+                    variant="continue"
                     hasTVPreferredFocus={true}
                     onPress={() => router.back()}
-                    style={({ focused }: any) => [
-                      styles.dialogBtn,
-                      styles.dialogBtnContinue,
-                      focused && styles.dialogBtnContinueFocused,
-                      { maxWidth: 220 },
-                    ]}
-                  >
-                    <Text style={styles.dialogBtnContinueText}>Voltar ao Catálogo</Text>
-                  </Pressable>
+                    style={{ maxWidth: 220 }}
+                  />
                 </View>
               </>
             )}
@@ -1182,16 +1197,13 @@ export default function TVPlayerScreen() {
               )}
             </ScrollView>
 
-            <Pressable
-              focusable={true}
+            <FocusableDialogButton
+              label="Fechar"
+              variant="secondary"
+              hasTVPreferredFocus={true}
               onPress={() => setShowAudioModal(false)}
-              style={({ focused }: any) => [
-                styles.closeTrackBtn,
-                focused && styles.dialogBtnFocused,
-              ]}
-            >
-              <Text style={styles.closeTrackBtnText}>Fechar</Text>
-            </Pressable>
+              style={{ width: '100%', marginTop: 12 }}
+            />
           </View>
         </View>
       </Modal>
@@ -1263,20 +1275,98 @@ export default function TVPlayerScreen() {
               })}
             </ScrollView>
 
-            <Pressable
-              focusable={true}
+            <FocusableDialogButton
+              label="Fechar"
+              variant="secondary"
+              hasTVPreferredFocus={true}
               onPress={() => setShowSubtitleModal(false)}
-              style={({ focused }: any) => [
-                styles.closeTrackBtn,
-                focused && styles.dialogBtnFocused,
-              ]}
-            >
-              <Text style={styles.closeTrackBtnText}>Fechar</Text>
-            </Pressable>
+              style={{ width: '100%', marginTop: 12 }}
+            />
           </View>
         </View>
       </Modal>
     </View>
+  );
+}
+
+// Botão Focável de Alto Contraste para Modais e Diálogos da TV (Continuar Assistindo, Salvar e Sair, etc.)
+function FocusableDialogButton({
+  label,
+  icon,
+  iconColor,
+  onPress,
+  hasTVPreferredFocus = false,
+  variant = 'secondary',
+  style,
+}: {
+  label: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  iconColor?: string;
+  onPress: () => void;
+  hasTVPreferredFocus?: boolean;
+  variant?: 'continue' | 'secondary' | 'primary';
+  style?: any;
+}) {
+  const [isFocused, setIsFocused] = useState(false);
+
+  let bg = '#1E2845';
+  let border = '#2A365B';
+  let textColor = '#FFFFFF';
+
+  if (variant === 'continue') {
+    // Continuar Assistindo: Branco sólido com anel de foco Cyan e glow
+    bg = '#FFFFFF';
+    border = isFocused ? colors.primary : '#FFFFFF';
+    textColor = '#000000';
+  } else if (variant === 'primary') {
+    bg = isFocused ? '#FFFFFF' : colors.primary;
+    border = isFocused ? colors.primary : 'transparent';
+    textColor = isFocused ? '#000000' : '#070A12';
+  } else {
+    // secondary: Salvar e Sair / Voltar / Fechar
+    bg = isFocused ? colors.primary : '#1E2845';
+    border = isFocused ? '#FFFFFF' : '#2A365B';
+    textColor = isFocused ? '#070A12' : '#FFFFFF';
+  }
+
+  return (
+    <Pressable
+      focusable={true}
+      hasTVPreferredFocus={hasTVPreferredFocus}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
+      onPress={onPress}
+      style={[
+        styles.dialogBtn,
+        {
+          backgroundColor: bg,
+          borderColor: border,
+          borderWidth: isFocused ? 2.5 : 1.5,
+        },
+        isFocused && styles.dialogBtnAnyFocused,
+        style,
+      ]}
+    >
+      {icon && (
+        <Ionicons
+          name={icon}
+          size={16}
+          color={iconColor || textColor}
+          style={{ marginRight: 6 }}
+        />
+      )}
+      <Text
+        style={[
+          styles.dialogBtnTextBase,
+          {
+            color: textColor,
+            fontWeight: isFocused ? '900' : '700',
+          },
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -1316,20 +1406,33 @@ function TVPlayerCircularBtn({
   badgeText,
   isCounterClockwise,
   onPress,
+  onPressIn,
+  onPressOut,
+  onLongPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   badgeText: string;
   isCounterClockwise: boolean;
   onPress: () => void;
+  onPressIn?: () => void;
+  onPressOut?: () => void;
+  onLongPress?: () => void;
 }) {
   const [isFocused, setIsFocused] = useState(false);
 
   return (
     <Pressable
       focusable={true}
+      delayLongPress={200}
       onFocus={() => setIsFocused(true)}
-      onBlur={() => setIsFocused(false)}
+      onBlur={() => {
+        setIsFocused(false);
+        onPressOut?.();
+      }}
       onPress={onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      onLongPress={onLongPress}
       style={[
         styles.seekCircleBtn,
         isFocused && styles.seekCircleBtnFocused,
@@ -1432,66 +1535,6 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     backgroundColor: 'rgba(0, 229, 255, 0.20)',
     transform: [{ scale: 1.15 }],
-  },
-
-  /* 2 & 3. Vertical Sliders (Left: Brightness, Right: Volume - Imagem 9) */
-  leftSliderContainer: {
-    position: 'absolute',
-    left: 36,
-    top: '25%',
-    bottom: '25%',
-    width: 44,
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  rightSliderContainer: {
-    position: 'absolute',
-    right: 36,
-    top: '25%',
-    bottom: '25%',
-    width: 44,
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  sliderTrackWrapper: {
-    flex: 1,
-    width: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 12,
-    paddingVertical: 8,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-  },
-  sliderFocused: {
-    borderColor: colors.primary,
-    backgroundColor: 'rgba(0, 229, 255, 0.20)',
-  },
-  sliderIcon: {
-    marginBottom: 10,
-  },
-  verticalTrackBg: {
-    flex: 1,
-    width: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 2,
-    position: 'relative',
-    justifyContent: 'flex-end',
-  },
-  verticalTrackFill: {
-    width: '100%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 2,
-  },
-  verticalThumb: {
-    position: 'absolute',
-    left: -6,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#00B4D8',
   },
 
   /* 4. Center Controls (Imagem 9: -10s, Play/Pause, +10s) */
@@ -1686,9 +1729,19 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
     flexDirection: 'row',
+  },
+  dialogBtnAnyFocused: {
+    transform: [{ scale: 1.08 }],
+    elevation: 14,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.9,
+    shadowRadius: 10,
+  },
+  dialogBtnTextBase: {
+    fontSize: 14,
+    letterSpacing: 0.3,
   },
   dialogBtnContinue: {
     backgroundColor: '#FFFFFF', // Branco Sólido (Imagem 1)

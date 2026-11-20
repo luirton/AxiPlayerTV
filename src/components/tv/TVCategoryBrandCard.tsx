@@ -1,11 +1,23 @@
 import React, { useState } from 'react';
-import { Pressable, Text, StyleSheet, View } from 'react-native';
+import { Pressable, Text, StyleSheet } from 'react-native';
 
 interface TVCategoryBrandCardProps {
   label: string;
   accentColor: string;
   onPress: () => void;
   hasTVPreferredFocus?: boolean;
+}
+
+// Determina se a cor de fundo requer texto escuro ou claro para máximo contraste
+function isLightColor(hex: string): boolean {
+  if (!hex || !hex.startsWith('#')) return false;
+  const c = hex.substring(1);
+  const rgb = parseInt(c.length === 3 ? c.split('').map((x) => x + x).join('') : c, 16);
+  const r = (rgb >> 16) & 0xff;
+  const g = (rgb >> 8) & 0xff;
+  const b = (rgb >> 0) & 0xff;
+  const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+  return luma > 155;
 }
 
 export const TVCategoryBrandCard: React.FC<TVCategoryBrandCardProps> = ({
@@ -15,6 +27,9 @@ export const TVCategoryBrandCard: React.FC<TVCategoryBrandCardProps> = ({
   hasTVPreferredFocus = false,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
+
+  const isLight = isLightColor(accentColor);
+  const focusedTextColor = isLight ? '#070A12' : '#FFFFFF';
 
   return (
     <Pressable
@@ -27,7 +42,7 @@ export const TVCategoryBrandCard: React.FC<TVCategoryBrandCardProps> = ({
         styles.card,
         {
           borderColor: isFocused ? '#FFFFFF' : accentColor,
-          backgroundColor: isFocused ? 'rgba(255, 255, 255, 0.12)' : '#070B14',
+          backgroundColor: isFocused ? accentColor : '#0E1322',
           shadowColor: accentColor,
         },
         isFocused && styles.cardFocused,
@@ -37,7 +52,7 @@ export const TVCategoryBrandCard: React.FC<TVCategoryBrandCardProps> = ({
         style={[
           styles.labelText,
           {
-            color: isFocused ? '#FFFFFF' : accentColor,
+            color: isFocused ? focusedTextColor : '#FFFFFF',
           },
           isFocused && styles.labelTextFocused,
         ]}
@@ -51,10 +66,11 @@ export const TVCategoryBrandCard: React.FC<TVCategoryBrandCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    minWidth: 140,
-    height: 52,
-    paddingHorizontal: 20,
-    borderRadius: 14,
+    minWidth: 130,
+    maxWidth: 220,
+    height: 48,
+    paddingHorizontal: 18,
+    borderRadius: 12,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
@@ -62,15 +78,15 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   cardFocused: {
-    transform: [{ scale: 1.08 }],
-    elevation: 12,
+    transform: [{ scale: 1.06 }],
+    elevation: 14,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.9,
     shadowRadius: 10,
     borderWidth: 2.5,
   },
   labelText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0.4,
     textAlign: 'center',

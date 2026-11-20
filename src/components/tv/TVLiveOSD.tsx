@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,7 @@ interface TVLiveOSDProps {
   onPreviousChannel?: () => void;
   onNextChannel?: () => void;
   onOpenDrawer?: () => void;
+  initialBannerFocus?: 'prev' | 'guide' | 'next';
 }
 
 export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
@@ -50,8 +51,75 @@ export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
   onPreviousChannel,
   onNextChannel,
   onOpenDrawer,
+  initialBannerFocus = 'guide',
 }) => {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [previewChannel, setPreviewChannel] = useState<LiveChannel | null>(activeChannel);
+  const channelsListRef = useRef<FlatList>(null);
+  const categoryListRef = useRef<FlatList>(null);
+
+  const activeChannelIndex = channels.findIndex(
+    (c) => String(c.stream_id) === String(activeChannel?.stream_id)
+  );
+
+  useEffect(() => {
+    if (activeChannel) {
+      setPreviewChannel(activeChannel);
+    }
+  }, [activeChannel]);
+
+  // Mantém a lista de canais e categorias sempre posicionadas no canal e categoria ativos
+  useEffect(() => {
+    if (isDrawerOpen && activeChannel && channels.length > 0) {
+      const chanIdx = channels.findIndex(
+        (c) => String(c.stream_id) === String(activeChannel.stream_id)
+      );
+      if (chanIdx >= 0) {
+        setPreviewChannel(activeChannel);
+        const timer = setTimeout(() => {
+          try {
+            channelsListRef.current?.scrollToIndex({
+              index: chanIdx,
+              animated: false,
+              viewPosition: 0.3,
+            });
+          } catch (e) {
+            channelsListRef.current?.scrollToOffset({
+              offset: Math.max(0, chanIdx * 48 - 100),
+              animated: false,
+            });
+          }
+        }, 80);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isDrawerOpen, activeChannel, channels]);
+
+  useEffect(() => {
+    if (isDrawerOpen && selectedCategory && categories.length > 0) {
+      const catIdx = categories.findIndex(
+        (c) => String(c.category_id) === String(selectedCategory.category_id)
+      );
+      if (catIdx >= 0) {
+        const timer = setTimeout(() => {
+          try {
+            categoryListRef.current?.scrollToIndex({
+              index: catIdx,
+              animated: false,
+              viewPosition: 0.3,
+            });
+          } catch (e) {
+            // ignore
+          }
+        }, 80);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isDrawerOpen, selectedCategory, categories]);
+
+  const targetChannel = previewChannel || activeChannel;
+  const isTargetFav = targetChannel ? favoriteIds.includes(targetChannel.stream_id) : false;
+  const isTargetPlaying = activeChannel?.stream_id === targetChannel?.stream_id;
 
   // Split Drawer (Guia Completo Translúcido)
   if (isDrawerOpen) {
@@ -93,12 +161,13 @@ export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
               </View>
 
               <FlatList
+                ref={categoryListRef}
                 data={categories}
                 keyExtractor={(item) => item.category_id}
                 showsVerticalScrollIndicator={false}
-                initialNumToRender={14}
-                maxToRenderPerBatch={16}
-                windowSize={7}
+                initialNumToRender={16}
+                maxToRenderPerBatch={20}
+                windowSize={9}
                 renderItem={({ item }) => {
                   const isSelected = selectedCategory?.category_id === item.category_id;
                   const isFavCategory = item.category_id === 'favorites';
@@ -124,14 +193,29 @@ export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
               </View>
 
               <FlatList
+                ref={channelsListRef}
                 data={channels}
                 keyExtractor={(item) => String(item.stream_id)}
                 showsVerticalScrollIndicator={false}
-                initialNumToRender={15}
-                maxToRenderPerBatch={20}
-                windowSize={9}
+                initialScrollIndex={activeChannelIndex >= 0 ? activeChannelIndex : undefined}
+                onScrollToIndexFailed={(info) => {
+                  setTimeout(() => {
+                    channelsListRef.current?.scrollToOffset({
+                      offset: Math.max(0, info.index * 48 - 100),
+                      animated: false,
+                    });
+                  }, 80);
+                }}
+                getItemLayout={(_, index) => ({
+                  length: 48,
+                  offset: 48 * index,
+                  index,
+                })}
+                initialNumToRender={20}
+                maxToRenderPerBatch={25}
+                windowSize={11}
                 renderItem={({ item, index }) => {
-                  const isPlaying = activeChannel?.stream_id === item.stream_id;
+                  const isPlaying = String(activeChannel?.stream_id) === String(item.stream_id);
                   const isFav = favoriteIds.includes(item.stream_id);
                   return (
                     <ChannelListItem
@@ -139,7 +223,9 @@ export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
                       channel={item}
                       isPlaying={isPlaying}
                       isFavorite={isFav}
+                      hasPreferredFocus={isPlaying}
                       onPress={() => onSelectChannel(item)}
+                      onFocusChannel={(chan) => setPreviewChannel(chan)}
                       onToggleFavorite={() => onToggleFavorite(item)}
                     />
                   );
@@ -149,27 +235,50 @@ export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
 
             {/* Coluna 3: Detalhes Rápidos do Canal em Foco / EPG */}
             <View style={styles.detailsColumn}>
-              {activeChannel ? (
+              {targetChannel ? (
                 <View style={styles.activeChannelPreview}>
                   <View style={styles.previewLogoBox}>
-                    {activeChannel.stream_icon ? (
+                    {targetChannel.stream_icon ? (
                       <Image
-                        source={{ uri: activeChannel.stream_icon }}
+                        source={{ uri: targetChannel.stream_icon }}
                         style={styles.previewLogoImage}
                         contentFit="contain"
                       />
                     ) : (
                       <Ionicons name="tv-outline" size={48} color="#666" />
                     )}
-                    <View style={styles.previewNowPlayingBadge}>
-                      <Ionicons name="play" size={12} color="#FFF" />
-                      <Text style={styles.previewNowPlayingText}>TOCANDO AGORA</Text>
+                    <View
+                      style={[
+                        styles.previewNowPlayingBadge,
+                        !isTargetPlaying && { backgroundColor: 'rgba(0, 229, 255, 0.85)' },
+                      ]}
+                    >
+                      <Ionicons name={isTargetPlaying ? 'play' : 'eye'} size={12} color="#FFF" />
+                      <Text style={styles.previewNowPlayingText}>
+                        {isTargetPlaying ? 'TOCANDO AGORA' : 'EM FOCO'}
+                      </Text>
                     </View>
                   </View>
 
                   <Text style={styles.previewChannelTitle} numberOfLines={2}>
-                    {activeChannel.name}
+                    {targetChannel.name}
                   </Text>
+
+                  {/* Ações Rápidas no Guia: Favoritar & Sintonizar */}
+                  <View style={styles.detailsActionsContainer}>
+                    <OSDActionButton
+                      icon={isTargetFav ? 'star' : 'star-outline'}
+                      iconColor={isTargetFav ? '#FFA000' : '#FFFFFF'}
+                      label={isTargetFav ? 'Remover dos Favoritos (⭐)' : 'Adicionar aos Favoritos (⭐)'}
+                      variant="accent"
+                      onPress={() => onToggleFavorite(targetChannel)}
+                    />
+                    <OSDActionButton
+                      icon="play"
+                      label="Sintonizar Canal (OK)"
+                      onPress={() => onSelectChannel(targetChannel)}
+                    />
+                  </View>
 
                   <View style={styles.epgBox}>
                     <View style={styles.epgLiveRow}>
@@ -186,21 +295,22 @@ export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
                     </Text>
 
                     {currentEpg?.description ? (
-                      <Text style={styles.epgProgramDesc} numberOfLines={4}>
+                      <Text style={styles.epgProgramDesc} numberOfLines={3}>
                         {currentEpg.description}
                       </Text>
                     ) : (
-                      <Text style={styles.epgProgramDesc} numberOfLines={3}>
-                        Use as setas Cima / Baixo no controle remoto para zapping rápido entre canais.
+                      <Text style={styles.epgProgramDesc} numberOfLines={2}>
+                        Sintonize para acompanhar a transmissão ao vivo em alta definição.
                       </Text>
                     )}
                   </View>
 
                   {/* Remote Navigation Shortcuts */}
                   <View style={styles.remoteTipsBox}>
-                    <Text style={styles.remoteTipsTitle}>Controle Remoto</Text>
-                    <Text style={styles.remoteTipText}>• OK: Reproduzir canal selecionado</Text>
-                    <Text style={styles.remoteTipText}>• ⭐: Favoritar canal</Text>
+                    <Text style={styles.remoteTipsTitle}>Comandos Rápidos</Text>
+                    <Text style={styles.remoteTipText}>• OK: Sintonizar e ver em tela cheia</Text>
+                    <Text style={styles.remoteTipText}>• Segurar OK: Favoritar / Desfavoritar</Text>
+                    <Text style={styles.remoteTipText}>• Seta Direita: Acessar botões de detalhes</Text>
                     <Text style={styles.remoteTipText}>• Voltar: Fechar guia e expandir vídeo</Text>
                   </View>
                 </View>
@@ -267,15 +377,10 @@ export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
               </View>
             </View>
 
-            {/* Botões rápidos D-Pad */}
+            {/* Ações Rápidas OSD: Guia (OK) e Favorito */}
             <View style={styles.zappingActions}>
               <OSDActionButton
-                icon="chevron-up"
-                label="Anterior (▲)"
-                variant="zapping"
-                onPress={onPreviousChannel}
-              />
-              <OSDActionButton
+                key="zapping-btn-guide"
                 icon="list"
                 label="Guia (OK)"
                 variant="zapping"
@@ -283,24 +388,20 @@ export const TVLiveOSD: React.FC<TVLiveOSDProps> = ({
                 onPress={onOpenDrawer}
               />
               <OSDActionButton
+                key="zapping-btn-fav"
                 icon={isFav ? 'star' : 'star-outline'}
                 iconColor={isFav ? '#FFA000' : '#FFF'}
                 label="Favorito"
                 variant="zapping"
+                hasPreferredFocus={false}
                 onPress={() => onToggleFavorite(activeChannel)}
-              />
-              <OSDActionButton
-                icon="chevron-down"
-                label="Próximo (▼)"
-                variant="zapping"
-                onPress={onNextChannel}
               />
             </View>
           </View>
 
           {/* Dicas de Zapping */}
           <Text style={styles.zappingDpadHint}>
-            ▲ Canal Anterior • ▼ Próximo Canal • OK Abrir Menu Completo • Voltar Sair
+            ▲ Canal Anterior • ▼ Próximo Canal • OK Abrir Menu de Canais • Voltar Fechar
           </Text>
         </LinearGradient>
       </View>
@@ -339,7 +440,7 @@ function CategoryListItem({
       <Ionicons
         name={isFavoriteTab ? 'star' : 'film-outline'}
         size={14}
-        color={isFavoriteTab ? '#FFA000' : isSelected || isFocused ? colors.primary : '#8E8E93'}
+        color={isFocused ? '#070A12' : isFavoriteTab ? '#FFA000' : isSelected ? colors.primary : '#8E8E93'}
         style={{ marginRight: 8 }}
       />
       <Text
@@ -362,14 +463,18 @@ function ChannelListItem({
   channel,
   isPlaying,
   isFavorite,
+  hasPreferredFocus,
   onPress,
+  onFocusChannel,
   onToggleFavorite,
 }: {
   num: number;
   channel: LiveChannel;
   isPlaying: boolean;
   isFavorite: boolean;
+  hasPreferredFocus?: boolean;
   onPress: () => void;
+  onFocusChannel?: (channel: LiveChannel) => void;
   onToggleFavorite: () => void;
 }) {
   const [isFocused, setIsFocused] = useState(false);
@@ -377,16 +482,23 @@ function ChannelListItem({
   return (
     <Pressable
       focusable={true}
-      onFocus={() => setIsFocused(true)}
+      hasTVPreferredFocus={hasPreferredFocus}
+      onFocus={() => {
+        setIsFocused(true);
+        onFocusChannel?.(channel);
+      }}
       onBlur={() => setIsFocused(false)}
       onPress={onPress}
+      onLongPress={onToggleFavorite}
       style={[
         styles.channelItem,
         isPlaying && styles.channelItemPlaying,
         isFocused && styles.focusedItem,
       ]}
     >
-      <Text style={styles.channelNumText}>{String(num).padStart(3, '0')}</Text>
+      <Text style={[styles.channelNumText, isFocused && styles.focusedChannelNumText]}>
+        {String(num).padStart(3, '0')}
+      </Text>
 
       {channel.stream_icon ? (
         <Image
@@ -396,7 +508,7 @@ function ChannelListItem({
         />
       ) : (
         <View style={styles.channelItemLogoPlaceholder}>
-          <Ionicons name="tv" size={13} color="#888" />
+          <Ionicons name="tv" size={13} color={isFocused ? '#070A12' : '#888'} />
         </View>
       )}
 
@@ -412,13 +524,13 @@ function ChannelListItem({
       </Text>
 
       {isPlaying && (
-        <View style={styles.playingBadgePill}>
-          <Ionicons name="volume-high" size={13} color="#FFF" />
+        <View style={[styles.playingBadgePill, isFocused && { backgroundColor: '#070A12' }]}>
+          <Ionicons name="volume-high" size={13} color={isFocused ? colors.primary : '#FFF'} />
         </View>
       )}
 
       {isFavorite && (
-        <Ionicons name="star" size={14} color="#FFA000" style={{ marginLeft: 6 }} />
+        <Ionicons name="star" size={14} color={isFocused ? '#070A12' : '#FFA000'} style={{ marginLeft: 6 }} />
       )}
     </Pressable>
   );
@@ -440,6 +552,7 @@ function OSDActionButton({
   hasPreferredFocus?: boolean;
 }) {
   const [isFocused, setIsFocused] = useState(false);
+  const isZapping = variant === 'zapping';
   return (
     <Pressable
       focusable={true}
@@ -448,7 +561,7 @@ function OSDActionButton({
       onBlur={() => setIsFocused(false)}
       onPress={onPress}
       style={[
-        variant === 'zapping'
+        isZapping
           ? styles.quickActionBtn
           : variant === 'accent'
           ? styles.exitBtn
@@ -676,23 +789,34 @@ const styles = StyleSheet.create({
 
   // Focus states
   focusedItem: {
-    borderColor: colors.focusRing,
-    backgroundColor: 'rgba(0, 229, 255, 0.22)',
+    borderColor: '#FFFFFF',
+    backgroundColor: colors.primary, // #00E5FF Axi Neon Cyan
+    borderWidth: 2.5,
+    transform: [{ scale: 1.06 }],
+    elevation: 12,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.95,
+    shadowRadius: 10,
   },
   focusedItemText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
+    color: '#070A12',
+    fontWeight: '900',
+  },
+  focusedChannelNumText: {
+    color: '#070A12',
+    fontWeight: '900',
   },
   focusedButton: {
     borderColor: '#FFFFFF',
     backgroundColor: colors.primary, // #00E5FF (Cores do sistema Axi)
-    borderWidth: 2,
-    transform: [{ scale: 1.08 }],
-    elevation: 10,
+    borderWidth: 2.5,
+    transform: [{ scale: 1.10 }],
+    elevation: 14,
     shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.9,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.95,
+    shadowRadius: 10,
   },
 
   // Details Column
@@ -735,6 +859,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginTop: 10,
     marginBottom: 6,
+  },
+  detailsActionsContainer: {
+    marginVertical: 6,
+    gap: 6,
   },
   epgBox: {
     backgroundColor: '#141418',
@@ -905,17 +1033,17 @@ const styles = StyleSheet.create({
   quickActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#24242E',
-    borderRadius: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#1E2845',
+    borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: 'transparent',
+    borderColor: '#2A365B',
   },
   quickActionText: {
-    color: '#FFF',
-    fontSize: 11,
-    fontWeight: 'bold',
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
     marginLeft: 6,
   },
   zappingDpadHint: {

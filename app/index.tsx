@@ -3,8 +3,12 @@ import { View, StyleSheet, Text, Animated, Easing, useWindowDimensions, Activity
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as SplashScreen from 'expo-splash-screen';
 import { storage } from '../src/services/storage';
 import { colors } from '../src/theme/colors';
+
+// Prevent native splash screen from hiding prematurely before React Native mounts
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function TVSplashScreen() {
   const router = useRouter();
@@ -14,58 +18,36 @@ export default function TVSplashScreen() {
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.88)).current;
-  const glowAnim = useRef(new Animated.Value(0.4)).current;
+  const scaleAnim = useRef(new Animated.Value(0.92)).current;
 
   useEffect(() => {
+    // Hide native splash screen smoothly so JS splash continues with animation
+    SplashScreen.hideAsync().catch(() => {});
+
     // 1. Entrance animation (Emblem fade & scale)
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 900,
+        duration: 500,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.spring(scaleAnim, {
         toValue: 1,
-        friction: 6,
+        friction: 7,
         tension: 40,
         useNativeDriver: true,
       }),
     ]).start();
 
-    // 2. Ambient neon pulse glow behind emblem
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowAnim, {
-          toValue: 0.85,
-          duration: 1300,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(glowAnim, {
-          toValue: 0.4,
-          duration: 1300,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    pulseLoop.start();
-
     let isMounted = true;
 
     async function initTVApp() {
       try {
-        if (isMounted) setStatusText('Verificando perfil salvo...');
-        await new Promise((r) => setTimeout(r, 450));
-
+        if (isMounted) setStatusText('Verificando perfil...');
         const active = await storage.getActiveProfile();
 
-        if (isMounted) setStatusText(active ? 'Carregando lista IPTV...' : 'Preparando tela de conexão...');
-        await new Promise((r) => setTimeout(r, 550));
-
-        if (isMounted) setStatusText('Pronto!');
+        if (isMounted) setStatusText(active ? 'Carregando lista IPTV...' : 'Iniciando...');
 
         setTimeout(() => {
           if (!isMounted) return;
@@ -74,7 +56,7 @@ export default function TVSplashScreen() {
           } else {
             router.replace('/login');
           }
-        }, 400);
+        }, 300);
       } catch (err) {
         console.warn('Erro na inicialização da TV:', err);
         if (isMounted) router.replace('/login');
@@ -85,17 +67,16 @@ export default function TVSplashScreen() {
 
     return () => {
       isMounted = false;
-      pulseLoop.stop();
     };
   }, [router]);
 
-  const emblemSize = Math.min(height * 0.32, 130);
+  const emblemSize = Math.min(height * 0.30, 120);
 
   return (
     <View style={styles.container}>
-      {/* Landscape Background with top lighting rays / soft cyan & purple bloom */}
+      {/* Background limpo OLED dark */}
       <LinearGradient
-        colors={['rgba(0, 229, 255, 0.12)', 'rgba(168, 85, 247, 0.08)', '#070A12', '#05070D']}
+        colors={['#0C0E16', '#070A12', '#05070D']}
         style={StyleSheet.absoluteFill}
       />
 
@@ -108,30 +89,12 @@ export default function TVSplashScreen() {
           },
         ]}
       >
-        {/* Glow halo behind emblem */}
-        <Animated.View
-          style={[
-            styles.glowHalo,
-            {
-              width: emblemSize * 1.8,
-              height: emblemSize * 1.8,
-              borderRadius: (emblemSize * 1.8) / 2,
-              opacity: glowAnim,
-            },
-          ]}
-        >
-          <LinearGradient
-            colors={['rgba(0, 229, 255, 0.45)', 'rgba(168, 85, 247, 0.25)', 'transparent']}
-            style={StyleSheet.absoluteFill}
-          />
-        </Animated.View>
-
         {/* 3D Cyan & Magenta 'A' Play Emblem */}
         <Image
           source={require('../assets/emblem_transparent.png')}
           style={[styles.emblem, { width: emblemSize, height: emblemSize }]}
           contentFit="contain"
-          transition={300}
+          transition={200}
         />
 
         {/* Typography: AxiPlayer TV */}
@@ -167,11 +130,6 @@ const styles = StyleSheet.create({
   contentBox: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  glowHalo: {
-    position: 'absolute',
-    top: 0,
-    alignSelf: 'center',
   },
   emblem: {
     marginBottom: 16,

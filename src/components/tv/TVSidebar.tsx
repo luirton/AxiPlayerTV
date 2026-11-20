@@ -25,7 +25,7 @@ const MENU_ITEMS: MenuItem[] = [
   { id: 'live', label: 'TV Ao Vivo', icon: 'tv', route: '/(tv)/live' },
   { id: 'movies', label: 'Filmes', icon: 'film', route: '/(tv)/movies' },
   { id: 'series', label: 'Séries', icon: 'albums', route: '/(tv)/series' },
-  { id: 'settings', label: 'Ajustes', icon: 'settings-sharp', route: '/(tv)/settings' },
+  { id: 'settings', label: 'Configurações', icon: 'settings-sharp', route: '/(tv)/settings' },
 ];
 
 export const TVSidebar: React.FC = () => {
@@ -80,7 +80,10 @@ export const TVSidebar: React.FC = () => {
       {/* Navigation Items */}
       <View style={styles.menuList}>
         {MENU_ITEMS.map((item) => {
-          const isActive = pathname.includes(item.route.replace('/(tv)', ''));
+          const routeSuffix = item.route.replace('/(tv)', '');
+          const isActive =
+            (pathname && routeSuffix && pathname.includes(routeSuffix)) ||
+            (item.id === 'home' && (pathname === '/' || pathname === '/(tv)/home' || pathname === '/home'));
           return (
             <SidebarItem
               key={item.id}
